@@ -1,17 +1,61 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Blue-black dark palette (fintech-dashboard look): every dark: class in the
+   app draws from these, so this one block retints the whole dark theme. */
+@theme {
+  --color-neutral-950: #080b12;
+  --color-neutral-900: #0f1420;
+  --color-neutral-800: #1a2130;
+  --color-neutral-700: #2a3245;
+  --color-neutral-600: #3d475f;
+}
+
+html {
+  /* Keep iOS from inflating text when rotating in standalone mode */
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-feature-settings: "ss01" 1;
+  /* App-like feel when launched from the home screen: no rubber-band page
+     bounce, no grey tap flash on buttons */
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #root {
   min-height: 100svh;
 }
 
+/* Visible focus for keyboard users without affecting touch/mouse taps */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid theme(colors.indigo.500);
+  outline-offset: 2px;
+}
+
+.dark button:focus-visible,
+.dark a:focus-visible,
+.dark [tabindex]:focus-visible {
+  outline-color: theme(colors.indigo.400);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 ::selection {
-  background: theme(colors.fuchsia.300);
+  background: theme(colors.indigo.200);
 }
 
 @keyframes toast-in {
@@ -62,24 +106,64 @@ body {
   }
 }
 
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes aurora-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(3rem, 2rem) scale(1.15); }
+}
+
+@keyframes aurora-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-3rem, -2.5rem) scale(1.1); }
+}
+
+@keyframes aurora-c {
+  0%, 100% { transform: translate(0, 0) scale(1.05); }
+  50% { transform: translate(2rem, -2rem) scale(0.95); }
+}
+
+@keyframes confetti-fly {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.6);
+  }
+}
+
+@keyframes bar-rise {
+  from { transform: scaleY(0); }
+}
+
 @layer components {
   .input {
-    @apply w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:ring-fuchsia-500;
+    @apply w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:ring-indigo-400;
   }
 
   .card {
-    @apply rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900;
+    @apply rounded-2xl border border-gray-200/80 bg-white shadow-sm transition-colors dark:border-white/5 dark:bg-neutral-900 dark:shadow-[0_8px_30px_rgba(0,0,0,0.35)];
   }
 
+  /* One solid accent; the brand gradient is reserved for the hero card alone. */
   .btn-primary {
-    @apply rounded-2xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white font-medium shadow-lg shadow-indigo-500/20 transition-all duration-150 hover:shadow-indigo-500/40 hover:brightness-110 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 dark:shadow-fuchsia-500/10;
+    @apply rounded-xl bg-indigo-600 text-white font-medium transition-all duration-150 hover:bg-indigo-500 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 dark:bg-indigo-500 dark:hover:bg-indigo-400;
   }
 
   .btn-ghost {
-    @apply rounded-2xl border border-gray-200 bg-white text-gray-700 font-medium transition-all duration-150 hover:border-indigo-300 active:scale-[0.97] dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200 dark:hover:border-fuchsia-500/50;
+    @apply rounded-xl border border-gray-200 bg-white text-gray-700 font-medium transition-all duration-150 hover:border-gray-300 active:scale-[0.97] dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200 dark:hover:border-neutral-600;
   }
 
-  .gradient-text {
-    @apply bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 bg-clip-text text-transparent dark:from-indigo-400 dark:via-violet-400 dark:to-fuchsia-400;
+  /* Tinted circle behind a chrome icon — the visual anchor for rows & sections. */
+  .icon-tile {
+    @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400;
   }
+
 }

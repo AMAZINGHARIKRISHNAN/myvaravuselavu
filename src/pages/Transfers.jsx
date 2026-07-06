@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Send, Pencil, Trash2 } from 'lucide-react'
 import { startOfMonth, differenceInCalendarMonths, format } from 'date-fns'
 import { useCollection } from '../hooks/useCollection'
 import { useSettings } from '../hooks/useSettings'
@@ -22,7 +23,7 @@ export default function Transfers() {
     () => (joinDate ? { start: startOfMonth(joinDate) } : undefined),
     [joinDate]
   )
-  const { data: rawTransfers, loading, add, remove } = useCollection('transfers', { dateRange: journeyRange })
+  const { data: rawTransfers, loading, addMany, remove } = useCollection('transfers', { dateRange: journeyRange })
   const { data: income } = useCollection('income', { dateRange: journeyRange })
   const { pendingIds, requestDelete } = useUndoableDelete(remove, 'Transfer')
   const data = useMemo(() => rawTransfers.filter((t) => !pendingIds.has(t.id)), [rawTransfers, pendingIds])
@@ -143,14 +144,14 @@ export default function Transfers() {
   const insightsSubtitle = `${formatJPY(totalSent)} sent this year · avg rate ${avgRate ? avgRate.toFixed(3) : '—'}`
 
   return (
-    <div className="space-y-6 pb-16">
+    <div className="space-y-6 pb-16 lg:pb-0">
       {pageLoading ? (
-        <>
+        <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
           <Skeleton className="h-44 w-full" />
           <Skeleton className="h-20 w-full" />
-        </>
+        </div>
       ) : (
-        <>
+        <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
           <JourneyCard
             joinDate={joinDate}
             months={months}
@@ -163,7 +164,15 @@ export default function Transfers() {
           />
 
           <LiveRateCard liveRate={liveRate} avgHistoricalRate={avgHistoricalRate} />
-        </>
+        </div>
+      )}
+
+      {!pageLoading && (
+        <TransferPlanner
+          liveRate={liveRate}
+          methodStats={methodStats}
+          avgHistoricalRate={avgHistoricalRate}
+        />
       )}
 
       <div className="card p-4 space-y-3">
@@ -198,7 +207,7 @@ export default function Transfers() {
           <button type="button" onClick={handleExport} className="btn-ghost py-2 text-xs">
             ⬇ Export CSV
           </button>
-          <CsvImportButton mapRow={importMapRow} onAdd={add} />
+          <CsvImportButton mapRow={importMapRow} onImport={addMany} />
         </div>
       </div>
 
@@ -213,33 +222,38 @@ export default function Transfers() {
           <EmptyState icon="💸" message="No transfers match — send your first one to family" />
         )}
         {filteredList.map((t) => (
-          <div key={t.id} className="card p-4 flex items-center justify-between animate-[toast-in_0.15s_ease-out]">
-            <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <div key={t.id} className="card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out]">
+            <span className="icon-tile">
+              <Send size={15} aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
                 {formatJPY(t.amountSent)} → {formatINR(t.amountReceived)}
               </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-gray-500 truncate dark:text-gray-400">
                 {toDate(t.date)?.toLocaleDateString()} · {t.method} · {t.recipient}
+                {t.note && ` · ${t.note}`}
               </p>
-              {t.note && <p className="text-xs text-gray-400 mt-0.5 dark:text-gray-500">{t.note}</p>}
             </div>
-            <div className="flex gap-3 text-xs font-medium">
+            <div className="flex shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setEditing(t)
                   setShowForm(true)
                 }}
-                className="text-indigo-600 dark:text-fuchsia-400"
+                aria-label="Edit"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
               >
-                Edit
+                <Pencil size={15} />
               </button>
               <button
                 type="button"
                 onClick={() => requestDelete(t.id)}
-                className="text-red-500 dark:text-red-400"
+                aria-label="Delete"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
               >
-                Delete
+                <Trash2 size={15} />
               </button>
             </div>
           </div>
@@ -311,7 +325,7 @@ function JourneyCard({
     return (
       <div className="card p-4 space-y-3">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">🎌 Your journey</h2>
-        <p className="text-xs text-gray-400 dark:text-gray-500">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
           When did you join the company? We'll total your salary, what you've sent home, and what you've saved since then.
         </p>
         <form onSubmit={submit} className="flex gap-2">
@@ -346,14 +360,14 @@ function JourneyCard({
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             🎌 Since {format(joinDate, 'MMM yyyy')}
           </h2>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
             {months} month{months === 1 ? '' : 's'} at the company
           </p>
         </div>
         <button
           type="button"
           onClick={startEdit}
-          className="text-xs font-medium text-indigo-600 dark:text-fuchsia-400"
+          className="text-xs font-medium text-indigo-600 dark:text-indigo-400"
         >
           Edit date
         </button>
@@ -370,22 +384,83 @@ function JourneyCard({
       </div>
 
       <div>
-        <div className="flex justify-between text-xs text-gray-400 mb-1 dark:text-gray-500">
+        <div className="flex justify-between text-xs text-gray-500 mb-1 dark:text-gray-400">
           <span>{formatPercent(sentPct)} of salary sent home</span>
           <span>{formatINR(receivedAllTime)} received</span>
         </div>
         <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden dark:bg-neutral-800">
           <div
-            className="h-full bg-gradient-to-r from-indigo-500 to-fuchsia-500"
+            className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 animate-[progress-fill_0.7s_ease-out] transition-all duration-500"
             style={{ width: `${Math.min(100, Math.max(0, sentPct * 100))}%` }}
           />
         </div>
       </div>
 
       {salaryEarned === 0 && (
-        <p className="text-xs text-gray-400 text-center dark:text-gray-500">
+        <p className="text-xs text-gray-500 text-center dark:text-gray-400">
           Log your salary as income to see how much you've saved.
         </p>
+      )}
+    </div>
+  )
+}
+
+// "I want ₹X to arrive" → JPY needed at the live rate + typical fee for the
+// user's best method, with a comparison against their historical average.
+function TransferPlanner({ liveRate, methodStats, avgHistoricalRate }) {
+  const [target, setTarget] = useState('')
+
+  if (!liveRate) return null
+
+  const inr = parseFloat(target) || 0
+  const jpyNeeded = inr > 0 ? inr / liveRate : 0
+  const best = methodStats[0]
+  const fee = best?.avgFee || 0
+  const atAvgRate = inr > 0 && avgHistoricalRate > 0 ? inr / avgHistoricalRate : 0
+  const savedVsAvg = atAvgRate > 0 ? atAvgRate - jpyNeeded : 0
+
+  return (
+    <div className="card p-4 space-y-3">
+      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">🧮 Transfer planner</h2>
+      <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+        How much should arrive (INR)?
+        <input
+          type="number"
+          step="any"
+          inputMode="numeric"
+          placeholder="e.g. 50000"
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          className="input"
+        />
+      </label>
+      {inr > 0 && (
+        <div className="space-y-1.5 rounded-xl bg-gray-50 p-3 text-sm dark:bg-neutral-800/50">
+          <p className="flex items-center justify-between text-gray-700 dark:text-gray-200">
+            <span>Send at today's rate ({liveRate.toFixed(3)})</span>
+            <span className="font-bold tabular-nums">{formatJPY(Math.ceil(jpyNeeded))}</span>
+          </p>
+          {best && (
+            <p className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+              <span>
+                + typical fee via {best.method}
+                {methodStats.length > 1 ? ' (your best method)' : ''}
+              </span>
+              <span className="tabular-nums">{formatJPY(Math.round(fee))}</span>
+            </p>
+          )}
+          <p className="flex items-center justify-between border-t border-gray-200 pt-1.5 text-xs font-semibold text-gray-700 dark:border-white/5 dark:text-gray-200">
+            <span>Total from your account</span>
+            <span className="tabular-nums">{formatJPY(Math.ceil(jpyNeeded + fee))}</span>
+          </p>
+          {Math.abs(savedVsAvg) >= 100 && (
+            <p className={`text-[11px] ${savedVsAvg > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+              {savedVsAvg > 0
+                ? `${formatJPY(Math.round(savedVsAvg))} cheaper than at your average rate 🟢`
+                : `${formatJPY(Math.abs(Math.round(savedVsAvg)))} more than at your average rate`}
+            </p>
+          )}
+        </div>
       )}
     </div>
   )
@@ -402,10 +477,10 @@ function LiveRateCard({ liveRate, avgHistoricalRate }) {
   return (
     <div className="card p-4 flex items-center justify-between transition-transform hover:-translate-y-0.5">
       <div>
-        <p className="text-xs font-medium text-gray-400 dark:text-gray-500">Live rate · JPY → INR</p>
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Live rate · JPY → INR</p>
         <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{liveRate.toFixed(3)}</p>
         {hasBaseline && (
-          <p className="text-[11px] text-gray-400 dark:text-gray-500">
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
             Your average: {avgHistoricalRate.toFixed(3)}
           </p>
         )}
@@ -433,17 +508,17 @@ function FamilyGoalCard({ label, target, received }) {
     <div className="card p-4 space-y-2 transition-transform hover:-translate-y-0.5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">🏡 {label}</h2>
-        <span className="text-xs text-gray-400 dark:text-gray-500">
+        <span className="text-xs text-gray-500 dark:text-gray-400">
           {formatINR(received)} / {formatINR(target)}
         </span>
       </div>
       <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden dark:bg-neutral-800">
         <div
-          className="h-full bg-gradient-to-r from-indigo-500 to-fuchsia-500"
+          className="h-full rounded-full bg-indigo-500"
           style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }}
         />
       </div>
-      <p className="text-[11px] text-gray-400 dark:text-gray-500">{formatPercent(progress)} of goal</p>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">{formatPercent(progress)} of goal</p>
     </div>
   )
 }
@@ -459,9 +534,9 @@ function MethodComparisonCard({ methodStats }) {
             <span className="font-medium text-gray-700 dark:text-gray-300">
               {m.method === best && '🏆 '}
               {m.method}
-              <span className="text-gray-400 dark:text-gray-500"> · {m.count}x</span>
+              <span className="text-gray-500 dark:text-gray-400"> · {m.count}x</span>
             </span>
-            <span className="text-gray-400 dark:text-gray-500">
+            <span className="text-gray-500 dark:text-gray-400">
               {m.effectiveRate.toFixed(3)} eff. rate · avg fee {formatJPY(m.avgFee)}
             </span>
           </div>
@@ -479,7 +554,7 @@ function RecipientBreakdownCard({ recipientStats }) {
         {recipientStats.map((r) => (
           <div key={r.recipient} className="flex items-center justify-between text-xs">
             <span className="font-medium text-gray-700 dark:text-gray-300">{r.recipient}</span>
-            <span className="text-gray-400 dark:text-gray-500">
+            <span className="text-gray-500 dark:text-gray-400">
               {formatJPY(r.sent)} → {formatINR(r.received)}
             </span>
           </div>
@@ -493,7 +568,7 @@ function Stat({ label, value, className }) {
   return (
     <div>
       <p className={`text-sm font-bold text-gray-900 dark:text-gray-100 ${className || ''}`}>{value}</p>
-      <p className="text-[11px] font-medium text-gray-400 mt-0.5 dark:text-gray-500">{label}</p>
+      <p className="text-[11px] font-medium text-gray-500 mt-0.5 dark:text-gray-400">{label}</p>
     </div>
   )
 }
@@ -503,7 +578,7 @@ function SummaryCard({ label, value, icon }) {
     <div className="card p-4 transition-transform hover:-translate-y-0.5">
       <div className="flex items-center gap-1.5">
         <span className="text-base">{icon}</span>
-        <p className="text-xs font-medium text-gray-400 dark:text-gray-500">{label}</p>
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
       </div>
       <p className="text-lg font-bold text-gray-900 mt-1 dark:text-gray-100">{value}</p>
     </div>

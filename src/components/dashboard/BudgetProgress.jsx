@@ -3,7 +3,7 @@ import { formatJPY } from '../../lib/format'
 function barColor(ratio) {
   if (ratio >= 1) return 'bg-red-500'
   if (ratio >= 0.7) return 'bg-amber-500'
-  return 'bg-gradient-to-r from-indigo-500 to-fuchsia-500'
+  return 'bg-indigo-500'
 }
 
 export default function BudgetProgress({ budgets, spendByCategory }) {
@@ -22,13 +22,13 @@ export default function BudgetProgress({ budgets, spendByCategory }) {
             <div key={category}>
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="font-medium text-gray-700 dark:text-gray-300">{category}</span>
-                <span className="text-gray-400 dark:text-gray-500">
+                <span className="text-gray-500 dark:text-gray-400">
                   {formatJPY(spent)} / {formatJPY(cap)}
                 </span>
               </div>
               <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden dark:bg-neutral-800">
                 <div
-                  className={`h-full rounded-full transition-all duration-500 ${barColor(ratio)}`}
+                  className={`h-full rounded-full animate-[progress-fill_0.7s_ease-out] transition-all duration-500 ${barColor(ratio)}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>

@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
+import { format } from 'date-fns'
+import { Search, Pencil, Trash2, Banknote } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
 import { useUndoableDelete } from '../hooks/useUndoableDelete'
-import { CATEGORIES, COUNTRIES } from '../lib/constants'
-import { formatJPY, formatByCountry, toDate } from '../lib/format'
+import { CATEGORIES, CATEGORY_ICONS, COUNTRIES } from '../lib/constants'
+import { formatJPY, formatINR, formatByCountry, toDateInputValue, parseDateInput } from '../lib/format'
 import { downloadCsv, formatDateForCsv } from '../lib/csv'
 import EntryFlow from '../components/entry/EntryFlow'
 import IncomeForm from '../components/entry/IncomeForm'
@@ -65,6 +67,31 @@ export default function History() {
   const loading = tab === 'expenses' ? expenses.loading : income.loading
   const activeUndo = tab === 'expenses' ? expensesUndo : incomeUndo
 
+  // Group records (already sorted date-desc) by local day, with per-day totals.
+  // JP and IN expenses are different currencies, so day totals keep them apart.
+  const dayGroups = (() => {
+    const map = new Map()
+    for (const record of records) {
+      const key = toDateInputValue(record.date)
+      if (!map.has(key)) map.set(key, [])
+      map.get(key).push(record)
+    }
+    return [...map.entries()].map(([key, recs]) => {
+      const isExpenses = tab === 'expenses'
+      const jpy = recs.reduce(
+        (sum, r) => sum + (isExpenses && r.country === 'IN' ? 0 : r.amount || 0),
+        0
+      )
+      const inr = isExpenses
+        ? recs.reduce((sum, r) => sum + (r.country === 'IN' ? r.amount || 0 : 0), 0)
+        : 0
+      const totalLabel = [jpy > 0 ? formatJPY(jpy) : null, inr > 0 ? formatINR(inr) : null]
+        .filter(Boolean)
+        .join(' · ')
+      return { key, records: recs, label: format(parseDateInput(key), 'EEE, d MMM yyyy'), totalLabel }
+    })
+  })()
+
   const handleExport = () => {
     if (tab === 'expenses') {
       downloadCsv(
@@ -96,8 +123,8 @@ export default function History() {
   }
 
   return (
-    <div className="space-y-4 pb-16">
-      <div className="flex gap-2">
+    <div className="space-y-4 pb-16 lg:mx-auto lg:max-w-3xl lg:pb-0">
+      <div className="flex rounded-full border border-gray-200 bg-white p-1 dark:border-white/5 dark:bg-neutral-900">
         <TabButton active={tab === 'expenses'} onClick={() => setTab('expenses')}>
           Expenses
         </TabButton>
@@ -107,7 +134,9 @@ export default function History() {
       </div>
 
       <div className="relative">
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm">🔍</span>
+        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
+          <Search size={15} aria-hidden="true" />
+        </span>
         <input
           type="text"
           placeholder="Search notes…"
@@ -193,7 +222,7 @@ export default function History() {
                   }
                 }
           }
-          onAdd={tab === 'expenses' ? expenses.add : income.add}
+          onImport={tab === 'expenses' ? expenses.addMany : income.addMany}
         />
       </div>
 
@@ -208,41 +237,59 @@ export default function History() {
         {!loading && records.length === 0 && (
           <EmptyState icon="🗂️" message="No records match" />
         )}
-        {records.map((record) => (
-          <div
-            key={record.id}
-            className="card p-4 flex items-center justify-between animate-[toast-in_0.15s_ease-out]"
-          >
-            <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {tab === 'expenses' ? formatByCountry(record.amount, record.country) : formatJPY(record.amount)}
-              </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                {toDate(record.date)?.toLocaleDateString()}
-                {tab === 'expenses'
-                  ? ` · ${record.category} · ${record.paymentMethod || '—'} · ${record.country}`
-                  : ` · ${record.source}`}
-              </p>
-              {record.note && (
-                <p className="text-xs text-gray-400 mt-0.5 dark:text-gray-500">{record.note}</p>
+        {dayGroups.map((group) => (
+          <div key={group.key} className="space-y-2">
+            <div className="flex items-baseline justify-between px-1 pt-2">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400">{group.label}</p>
+              {group.totalLabel && (
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{group.totalLabel}</p>
               )}
             </div>
-            <div className="flex gap-3 text-xs font-medium">
-              <button
-                type="button"
-                onClick={() => setEditing(record)}
-                className="text-indigo-600 dark:text-fuchsia-400"
+            {group.records.map((record) => (
+              <div
+                key={record.id}
+                className="card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out]"
               >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => activeUndo.requestDelete(record.id)}
-                className="text-red-500 dark:text-red-400"
-              >
-                Delete
-              </button>
-            </div>
+                {tab === 'expenses' ? (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-base dark:bg-neutral-800">
+                    {CATEGORY_ICONS[record.category] || '📌'}
+                  </span>
+                ) : (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+                    <Banknote size={16} aria-hidden="true" />
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                    {tab === 'expenses' ? formatByCountry(record.amount, record.country) : formatJPY(record.amount)}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate dark:text-gray-400">
+                    {tab === 'expenses'
+                      ? `${record.category} · ${record.paymentMethod || '—'} · ${record.country}`
+                      : record.source}
+                    {record.note && ` · ${record.note}`}
+                  </p>
+                </div>
+                <div className="flex shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setEditing(record)}
+                    aria-label="Edit"
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => activeUndo.requestDelete(record.id)}
+                    aria-label="Delete"
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>
@@ -267,10 +314,10 @@ function TabButton({ active, onClick, children }) {
     <button
       type="button"
       onClick={onClick}
-      className={`flex-1 rounded-2xl py-2 text-sm font-medium transition-all active:scale-95 ${
+      className={`flex-1 rounded-full py-2 text-sm font-medium transition-all active:scale-95 touch-manipulation ${
         active
-          ? 'bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white shadow-lg shadow-indigo-500/20'
-          : 'bg-white border border-gray-200 text-gray-600 dark:bg-neutral-900 dark:border-neutral-800 dark:text-gray-300'
+          ? 'bg-indigo-600 text-white dark:bg-indigo-500'
+          : 'text-gray-500 dark:text-gray-400'
       }`}
     >
       {children}

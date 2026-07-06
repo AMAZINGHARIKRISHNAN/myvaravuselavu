@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRecurring } from '../../hooks/useRecurring'
 import { useSettings } from '../../hooks/useSettings'
 import { useToast } from '../../context/ToastContext'
 import { CATEGORIES, NON_ACCOUNT_PAYMENT_METHODS } from '../../lib/constants'
+import BottomSheet from '../ui/BottomSheet'
 
 export default function RecurringForm({ onClose, initial }) {
   const { add, update } = useRecurring()
@@ -22,12 +23,6 @@ export default function RecurringForm({ onClose, initial }) {
   const [autoPost, setAutoPost] = useState(initial?.autoPost ?? false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose()
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   const paymentOptions = [
     ...(settings?.accounts ?? []).map((a) => a.label),
@@ -64,7 +59,7 @@ export default function RecurringForm({ onClose, initial }) {
       }
       toast(`✓ Recurring "${payload.label}" saved`)
       onClose()
-    } catch (err) {
+    } catch {
       setError('Could not save. Try again.')
     } finally {
       setSaving(false)
@@ -72,29 +67,12 @@ export default function RecurringForm({ onClose, initial }) {
   }
 
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 animate-[fade-in_0.15s_ease-out]"
+    <BottomSheet
+      as="form"
+      onSubmit={handleSubmit}
+      onClose={onClose}
+      title={initial ? 'Edit recurring' : 'New recurring'}
     >
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 space-y-4 max-h-[92svh] overflow-y-auto dark:bg-neutral-900 dark:border dark:border-neutral-800 animate-[sheet-up_0.22s_cubic-bezier(0.32,0.72,0,1)] shadow-2xl"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {initial ? 'Edit recurring' : 'New recurring'}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-transform active:scale-90 dark:bg-neutral-800 dark:text-gray-400"
-          >
-            ✕
-          </button>
-        </div>
-
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
         <div className="grid grid-cols-3 gap-2">
@@ -105,7 +83,7 @@ export default function RecurringForm({ onClose, initial }) {
               onClick={() => setKind(k)}
               className={`rounded-xl py-2 text-sm font-medium capitalize transition-transform active:scale-95 ${
                 kind === k
-                  ? 'bg-gradient-to-r from-indigo-600 to-fuchsia-600 text-white'
+                  ? 'bg-indigo-600 text-white dark:bg-indigo-500'
                   : 'bg-gray-100 text-gray-600 dark:bg-neutral-800 dark:text-gray-300'
               }`}
             >
@@ -192,7 +170,7 @@ export default function RecurringForm({ onClose, initial }) {
             <Field label="Fee (JPY, optional)">
               <input type="number" step="any" value={fee} onChange={(e) => setFee(e.target.value)} className="input" />
             </Field>
-            <p className="text-[11px] text-gray-400 dark:text-gray-500">
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
               The exchange rate is filled in from the live rate when this posts — check and edit it afterward.
             </p>
           </>
@@ -201,7 +179,7 @@ export default function RecurringForm({ onClose, initial }) {
         <label className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-neutral-800/50">
           <span className="text-xs text-gray-600 dark:text-gray-300">
             Auto-post on due date
-            <span className="block text-[11px] text-gray-400 dark:text-gray-500">
+            <span className="block text-[11px] text-gray-500 dark:text-gray-400">
               Skip the "Due this month" confirmation
             </span>
           </span>
@@ -216,8 +194,7 @@ export default function RecurringForm({ onClose, initial }) {
         <button type="submit" disabled={saving} className="btn-primary w-full py-3 text-sm">
           {saving ? 'Saving…' : 'Save recurring'}
         </button>
-      </form>
-    </div>
+    </BottomSheet>
   )
 }
 

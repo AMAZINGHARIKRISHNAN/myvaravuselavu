@@ -1,4 +1,6 @@
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫']
+// '00' instead of '.': JPY has no decimals and INR paise are rarely logged,
+// while round amounts like 1,500 are constant — this saves a tap on most entries.
+const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '00', '0', '⌫']
 
 export default function Keypad({ value, onChange, onNext }) {
   const press = (key) => {
@@ -7,9 +9,9 @@ export default function Keypad({ value, onChange, onNext }) {
       onChange(value.slice(0, -1))
       return
     }
-    if (key === '.' && value.includes('.')) return
-    if (value.replace('.', '').length >= 12) return
-    if (value === '0' && key !== '.') {
+    if (key === '00' && (!value || value === '0')) return
+    if (value.length + key.length > 12) return
+    if (value === '0') {
       onChange(key)
       return
     }
@@ -21,7 +23,7 @@ export default function Keypad({ value, onChange, onNext }) {
 
   return (
     <div className="flex flex-col items-center gap-4 w-full max-w-xs mx-auto">
-      <div className="gradient-text text-5xl font-bold tabular-nums leading-none py-1">
+      <div className="text-5xl font-bold tabular-nums leading-none py-1 text-gray-900 dark:text-gray-100">
         ¥{value.endsWith('.') ? `${display}.` : display}
       </div>
       <div className="grid grid-cols-3 gap-2.5 w-full">

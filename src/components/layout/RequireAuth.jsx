@@ -7,10 +7,10 @@ export default function RequireAuth({ children }) {
   if (loading) {
     return (
       <div className="min-h-svh flex flex-col items-center justify-center gap-3 bg-gray-50 dark:bg-neutral-950">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 text-xl font-bold text-white shadow-lg shadow-indigo-500/30 animate-pulse">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-xl font-bold text-white animate-pulse dark:bg-indigo-500">
           ¥
         </div>
-        <p className="text-sm text-gray-400 dark:text-gray-500">Loading…</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
       </div>
     )
   }

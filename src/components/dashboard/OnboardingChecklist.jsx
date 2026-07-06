@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { CircleCheck, Circle, ArrowRight } from 'lucide-react'
 import { hasPin } from '../../lib/appLock'
 
 const DISMISS_KEY = 'vs_onboarding_dismissed'
@@ -26,11 +27,11 @@ export default function OnboardingChecklist({ settings }) {
   return (
     <div className="card p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">👋 Get set up</h2>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Get set up</h2>
         <button
           type="button"
           onClick={dismiss}
-          className="text-xs font-medium text-gray-400 dark:text-gray-500"
+          className="text-xs font-medium text-gray-500 dark:text-gray-400"
         >
           Dismiss
         </button>
@@ -44,11 +45,22 @@ export default function OnboardingChecklist({ settings }) {
             disabled={s.done}
             className="flex w-full items-center justify-between rounded-xl px-1 py-1.5 text-left text-sm transition-transform active:scale-[0.98] disabled:active:scale-100"
           >
-            <span className={s.done ? 'text-gray-400 line-through dark:text-gray-600' : 'text-gray-700 dark:text-gray-300'}>
-              {s.done ? '✅' : '⬜'} {s.label}
+            <span
+              className={`flex items-center gap-2 ${
+                s.done ? 'text-gray-500 line-through dark:text-gray-600' : 'text-gray-700 dark:text-gray-300'
+              }`}
+            >
+              {s.done ? (
+                <CircleCheck size={16} className="shrink-0 text-emerald-500" aria-hidden="true" />
+              ) : (
+                <Circle size={16} className="shrink-0 text-gray-300 dark:text-neutral-600" aria-hidden="true" />
+              )}
+              {s.label}
             </span>
             {!s.done && (
-              <span className="text-xs font-medium text-indigo-600 dark:text-fuchsia-400">Go →</span>
+              <span className="flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                Go <ArrowRight size={12} aria-hidden="true" />
+              </span>
             )}
           </button>
         ))}

@@ -10,6 +10,7 @@ import {
   query,
   orderBy,
   where,
+  writeBatch,
   Timestamp,
 } from 'firebase/firestore'
 import { db } from './firebase'
@@ -49,6 +50,40 @@ export function updateRecord(uid, name, id, data) {
 
 export function deleteRecord(uid, name, id) {
   return deleteDoc(userDoc(uid, name, id))
+}
+
+// Batched insert for CSV imports — one commit per chunk instead of one write per row.
+// Firestore caps batches at 500 operations.
+export async function addRecords(uid, name, records) {
+  const CHUNK = 450
+  for (let i = 0; i < records.length; i += CHUNK) {
+    const batch = writeBatch(db)
+    for (const data of records.slice(i, i + CHUNK)) {
+      batch.set(doc(userCollection(uid, name)), {
+        ...data,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      })
+    }
+    await batch.commit()
+  }
+  return records.length
+}
+
+// Posts a recurring item atomically: the new record and the recurring doc's
+// lastGeneratedMonth land in one batch, so a failure can't double-post next visit.
+export function addRecordAndMarkRecurring(uid, name, data, recurringId, monthKey) {
+  const batch = writeBatch(db)
+  batch.set(doc(userCollection(uid, name)), {
+    ...data,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  })
+  batch.update(userDoc(uid, 'recurring', recurringId), {
+    lastGeneratedMonth: monthKey,
+    updatedAt: Timestamp.now(),
+  })
+  return batch.commit()
 }
 
 // ---- Recurring transactions (users/{uid}/recurring) — no `date` field ----

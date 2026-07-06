@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { parseCsv } from '../../lib/csv'
 import { useToast } from '../../context/ToastContext'
 
-export default function CsvImportButton({ label = '⬆ Import CSV', mapRow, onAdd }) {
+export default function CsvImportButton({ label = '⬆ Import CSV', mapRow, onImport }) {
   const inputRef = useRef(null)
   const [importing, setImporting] = useState(false)
   const { toast } = useToast()
@@ -14,15 +14,18 @@ export default function CsvImportButton({ label = '⬆ Import CSV', mapRow, onAd
     setImporting(true)
     try {
       const text = await file.text()
-      const rows = parseCsv(text)
-      let count = 0
-      for (const row of rows) {
-        const record = mapRow(row)
-        if (!record) continue
-        await onAdd(record)
-        count++
+      const records = parseCsv(text).map(mapRow).filter(Boolean)
+      if (records.length === 0) {
+        toast('No valid rows found in file')
+        return
       }
-      toast(count > 0 ? `✓ Imported ${count} record${count === 1 ? '' : 's'}` : 'No valid rows found in file')
+      // There is no dedupe — importing the same file twice doubles every record.
+      const ok = window.confirm(
+        `Import ${records.length} record${records.length === 1 ? '' : 's'} from "${file.name}"?\n\nNote: importing the same file twice will create duplicates.`
+      )
+      if (!ok) return
+      await onImport(records)
+      toast(`✓ Imported ${records.length} record${records.length === 1 ? '' : 's'}`)
     } catch {
       toast('Could not import CSV — check the file format')
     } finally {

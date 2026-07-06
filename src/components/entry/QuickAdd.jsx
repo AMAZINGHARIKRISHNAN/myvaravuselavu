@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Sparkles, Mic } from 'lucide-react'
 import { parseExpenseText } from '../../lib/parseExpenseText'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import EntryFlow from './EntryFlow'
@@ -32,7 +33,9 @@ export default function QuickAdd({ onSaved }) {
     <>
       <form onSubmit={handleSubmit} className="flex gap-2">
         <div className="relative flex-1">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm">✨</span>
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-indigo-400 dark:text-indigo-500">
+            <Sparkles size={15} aria-hidden="true" />
+          </span>
           <input
             type="text"
             placeholder={listening ? 'Listening…' : 'e.g. coffee 450'}
@@ -45,11 +48,13 @@ export default function QuickAdd({ onSaved }) {
               type="button"
               onClick={startListening}
               aria-label="Voice quick-add"
-              className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-base transition-transform active:scale-90 ${
-                listening ? 'animate-pulse' : ''
+              className={`absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition-all active:scale-90 touch-manipulation ${
+                listening
+                  ? 'animate-pulse text-red-500'
+                  : 'text-gray-400 hover:text-indigo-600 dark:text-gray-500 dark:hover:text-indigo-400'
               }`}
             >
-              {listening ? '🔴' : '🎤'}
+              <Mic size={16} />
             </button>
           )}
         </div>

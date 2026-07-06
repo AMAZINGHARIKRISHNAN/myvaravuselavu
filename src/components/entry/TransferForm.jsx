@@ -1,23 +1,24 @@
 import { useState } from 'react'
-import { useCollection } from '../../hooks/useCollection'
+import { useCollectionWriters } from '../../hooks/useCollectionWriters'
+import { useSettings } from '../../hooks/useSettings'
 import { useToast } from '../../context/ToastContext'
-
-function todayInputValue() {
-  return new Date().toISOString().slice(0, 10)
-}
+import { toDateInputValue, parseDateInput } from '../../lib/format'
+import { celebrate } from '../../lib/celebrate'
+import BottomSheet from '../ui/BottomSheet'
 
 export default function TransferForm({ onClose, initial }) {
-  const { add, update } = useCollection('transfers')
+  const { add, update } = useCollectionWriters('transfers')
+  const { settings } = useSettings()
+  const jpAccounts = (settings?.accounts || []).filter((a) => a.country === 'JP')
   const { toast } = useToast()
   const [amountSent, setAmountSent] = useState(initial?.amountSent ?? '')
   const [amountReceived, setAmountReceived] = useState(initial?.amountReceived ?? '')
   const [exchangeRate, setExchangeRate] = useState(initial?.exchangeRate ?? '')
   const [fee, setFee] = useState(initial?.fee ?? '')
-  const [date, setDate] = useState(
-    initial?.date ? initial.date.toDate().toISOString().slice(0, 10) : todayInputValue()
-  )
+  const [date, setDate] = useState(toDateInputValue(initial?.date))
   const [recipient, setRecipient] = useState(initial?.recipient ?? 'Parents')
   const [method, setMethod] = useState(initial?.method ?? 'Wise')
+  const [fromAccount, setFromAccount] = useState(initial?.fromAccount ?? '')
   const [note, setNote] = useState(initial?.note ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -40,19 +41,21 @@ export default function TransferForm({ onClose, initial }) {
         amountReceived: received,
         exchangeRate: rate,
         fee: parseFloat(fee) || 0,
-        date: new Date(date),
+        date: parseDateInput(date),
         recipient,
         method,
+        fromAccount: fromAccount || null,
         note,
       }
       if (initial?.id) {
         await update(initial.id, payload)
       } else {
         await add(payload)
+        celebrate()
       }
       toast(`✓ Transfer of ¥${sent.toLocaleString()} saved`)
       onClose()
-    } catch (err) {
+    } catch {
       setError('Could not save. Try again.')
     } finally {
       setSaving(false)
@@ -60,32 +63,15 @@ export default function TransferForm({ onClose, initial }) {
   }
 
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 animate-[fade-in_0.15s_ease-out]"
+    <BottomSheet
+      as="form"
+      onSubmit={handleSubmit}
+      onClose={onClose}
+      title={initial ? 'Edit transfer' : 'Add transfer'}
     >
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 space-y-4 max-h-[92svh] overflow-y-auto dark:bg-neutral-900 dark:border dark:border-neutral-800 animate-[sheet-up_0.22s_cubic-bezier(0.32,0.72,0,1)] shadow-2xl"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {initial ? 'Edit transfer' : 'Add transfer'}
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-transform active:scale-90 dark:bg-neutral-800 dark:text-gray-400"
-          >
-            ✕
-          </button>
-        </div>
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-
-        <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
           <Field label="Amount sent (JPY)">
             <input
               type="number"
@@ -134,16 +120,27 @@ export default function TransferForm({ onClose, initial }) {
           <Field label="Method">
             <input value={method} onChange={(e) => setMethod(e.target.value)} className="input" />
           </Field>
-        </div>
-        <Field label="Note">
-          <input value={note} onChange={(e) => setNote(e.target.value)} className="input" />
-        </Field>
+          {jpAccounts.length > 0 && (
+            <Field label="From account (for balances)">
+              <select value={fromAccount} onChange={(e) => setFromAccount(e.target.value)} className="input">
+                <option value="">— none —</option>
+                {jpAccounts.map((a) => (
+                  <option key={a.id} value={a.label}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+      </div>
+      <Field label="Note">
+        <input value={note} onChange={(e) => setNote(e.target.value)} className="input" />
+      </Field>
 
-        <button type="submit" disabled={saving} className="btn-primary w-full py-3 text-sm">
-          {saving ? 'Saving…' : 'Save transfer'}
-        </button>
-      </form>
-    </div>
+      <button type="submit" disabled={saving} className="btn-primary w-full py-3 text-sm">
+        {saving ? 'Saving…' : 'Save transfer'}
+      </button>
+    </BottomSheet>
   )
 }
 

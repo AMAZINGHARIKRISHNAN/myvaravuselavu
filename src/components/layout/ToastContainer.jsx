@@ -6,7 +6,11 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed bottom-24 left-0 right-0 z-[60] flex flex-col items-center gap-2 px-4 pointer-events-none">
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] left-0 right-0 z-[60] flex flex-col items-center gap-2 px-4 pointer-events-none lg:bottom-8"
+    >
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -20,7 +24,7 @@ export default function ToastContainer() {
                 t.onAction?.()
                 dismiss(t.id)
               }}
-              className="shrink-0 font-semibold text-fuchsia-400 dark:text-fuchsia-600"
+              className="shrink-0 font-semibold text-indigo-300 dark:text-indigo-600"
             >
               {t.actionLabel}
             </button>

@@ -21,3 +21,21 @@ export function toDate(value) {
   if (value.toDate) return value.toDate()
   return new Date(value)
 }
+
+// Formats a Date/Timestamp for <input type="date"> in LOCAL time.
+// (toISOString() is UTC and shows the wrong day for morning JST times.)
+export function toDateInputValue(value) {
+  const d = value ? toDate(value) : new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+// Parses an <input type="date"> value as a LOCAL date. If it's today, keeps the
+// current time so same-day records sort in entry order; otherwise uses noon to
+// stay clear of timezone edges.
+export function parseDateInput(str) {
+  const [y, m, d] = str.split('-').map(Number)
+  const now = new Date()
+  const isToday = now.getFullYear() === y && now.getMonth() === m - 1 && now.getDate() === d
+  return isToday ? now : new Date(y, m - 1, d, 12)
+}

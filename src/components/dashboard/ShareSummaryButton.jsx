@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Share2 } from 'lucide-react'
 import { formatJPY, formatPercent } from '../../lib/format'
 import { useToast } from '../../context/ToastContext'
 
@@ -78,9 +79,10 @@ export default function ShareSummaryButton({ monthLabel, income, expenses, trans
       type="button"
       onClick={handleShare}
       disabled={busy}
-      className="text-xs font-medium text-white/80 hover:text-white underline decoration-white/40 underline-offset-2"
+      className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-white/25 active:scale-95 touch-manipulation"
     >
-      {busy ? 'Preparing…' : '📤 Share this month'}
+      <Share2 size={12} aria-hidden="true" />
+      {busy ? 'Preparing…' : 'Share this month'}
     </button>
   )
 }

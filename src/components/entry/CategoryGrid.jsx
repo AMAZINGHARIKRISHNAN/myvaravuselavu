@@ -1,15 +1,4 @@
-import { CATEGORIES } from '../../lib/constants'
-
-const ICONS = {
-  Food: '🍚',
-  Transport: '🚃',
-  Shopping: '🛍️',
-  Bills: '🧾',
-  Coffee: '☕',
-  Health: '💊',
-  Fun: '🎉',
-  Other: '📌',
-}
+import { CATEGORIES, CATEGORY_ICONS as ICONS } from '../../lib/constants'
 
 export default function CategoryGrid({ value, onSelect }) {
   const handleSelect = (category) => {
@@ -26,7 +15,7 @@ export default function CategoryGrid({ value, onSelect }) {
           onClick={() => handleSelect(category)}
           className={`flex flex-col items-center justify-center gap-1 rounded-2xl py-3.5 text-sm font-medium transition-transform duration-75 active:scale-90 touch-manipulation ${
             value === category
-              ? 'bg-gradient-to-br from-indigo-600 to-fuchsia-600 text-white shadow-lg shadow-indigo-500/20'
+              ? 'bg-indigo-600 text-white dark:bg-indigo-500'
               : 'bg-gray-100 text-gray-800 dark:bg-neutral-800 dark:text-gray-100'
           }`}
         >

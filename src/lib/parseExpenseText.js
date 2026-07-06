@@ -18,13 +18,27 @@ const PAYMENT_KEYWORDS = {
 
 const NOISE_WORDS = ['yen', 'jpy', '¥', 'cash', 'upi', 'edenred', 'debit', 'credit', 'card']
 
-// Parses short shorthand like "coffee 450" or "lunch at Saizeriya 1200 debit card"
+// Picks the amount out of the text: strips digit-group commas ("1,200" → 1200),
+// and prefers numbers that stand alone over ones glued to words ("7-eleven").
+function extractAmount(text) {
+  const cleaned = text.replace(/(\d),(?=\d)/g, '$1')
+  const candidates = [...cleaned.matchAll(/\d+(?:\.\d+)?/g)]
+  if (candidates.length === 0) return { amount: null, cleaned, matched: null }
+
+  const isWordChar = (ch) => ch !== undefined && /[A-Za-z-]/.test(ch)
+  const standalone = candidates.find(
+    (m) => !isWordChar(cleaned[m.index - 1]) && !isWordChar(cleaned[m.index + m[0].length])
+  )
+  const match = standalone || candidates[0]
+  return { amount: parseFloat(match[0]), cleaned, matched: match[0] }
+}
+
+// Parses short shorthand like "coffee 450" or "lunch at Saizeriya 1,200 debit card"
 // entirely client-side — no network call, no secret key involved.
 export function parseExpenseText(text) {
   const lower = text.toLowerCase()
 
-  const amountMatch = text.match(/\d+(\.\d+)?/)
-  const amount = amountMatch ? parseFloat(amountMatch[0]) : null
+  const { amount, cleaned, matched } = extractAmount(text)
 
   let category = 'Other'
   for (const cat of CATEGORIES) {
@@ -43,8 +57,8 @@ export function parseExpenseText(text) {
     }
   }
 
-  const note = text
-    .replace(amountMatch ? amountMatch[0] : '', '')
+  const note = cleaned
+    .replace(matched ?? '', '')
     .split(/\s+/)
     .filter((word) => word && !NOISE_WORDS.includes(word.toLowerCase()))
     .join(' ')
