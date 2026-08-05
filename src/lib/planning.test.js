@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeSafeToSpend, gradeForSavingsRate } from './planning'
+import { computeSafeToSpend, defaultMonthOffset, gradeForSavingsRate } from './planning'
 
 describe('computeSafeToSpend', () => {
   const now = new Date(2026, 6, 6) // 6 Jul; July has 31 days → 26 days left incl. today
@@ -42,5 +42,22 @@ describe('gradeForSavingsRate', () => {
   it('returns null for non-finite input', () => {
     expect(gradeForSavingsRate(NaN)).toBeNull()
     expect(gradeForSavingsRate(Infinity)).toBeNull()
+  })
+})
+
+describe('defaultMonthOffset', () => {
+  it('reviews the current month once salary day has passed', () => {
+    expect(defaultMonthOffset(25, new Date(2026, 6, 25))).toBe(0)
+    expect(defaultMonthOffset(25, new Date(2026, 6, 30))).toBe(0)
+  })
+
+  it('reviews last month before salary day', () => {
+    expect(defaultMonthOffset(25, new Date(2026, 6, 24))).toBe(1)
+    expect(defaultMonthOffset(25, new Date(2026, 6, 1))).toBe(1)
+  })
+
+  it('follows a custom salary date', () => {
+    expect(defaultMonthOffset(5, new Date(2026, 6, 6))).toBe(0)
+    expect(defaultMonthOffset(5, new Date(2026, 6, 4))).toBe(1)
   })
 })

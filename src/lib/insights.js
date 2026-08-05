@@ -1,4 +1,5 @@
 import { formatJPY } from './format'
+import { rankStores } from './stores'
 
 function sumByCategory(expenses) {
   const totals = {}
@@ -37,6 +38,16 @@ export function buildInsights({ expenses, prevExpenses, savingsRate, prevSavings
     insights.push({
       icon: up ? '📈' : '📉',
       text: `${biggestChange.cat} is ${up ? 'up' : 'down'} ${pct}% vs last month`,
+    })
+  }
+
+  // Where the money went: only shown once a shop has more than one visit,
+  // otherwise it's just restating a single expense.
+  const topStore = rankStores(expenses, { limit: 1 })[0]
+  if (topStore && topStore.count > 1) {
+    insights.push({
+      icon: '🏪',
+      text: `${topStore.name} took ${formatJPY(topStore.total)} over ${topStore.count} visits`,
     })
   }
 

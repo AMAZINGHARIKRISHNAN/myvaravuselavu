@@ -17,6 +17,13 @@ export function computeSafeToSpend({
   }
 }
 
+// Which month the month-end review opens on: once salary day has passed, the
+// month you're in is the one worth reviewing; before that, last month is the
+// finished one. (0 = this month, 1 = last month — matches monthRange.)
+export function defaultMonthOffset(salaryDate = 25, today = new Date()) {
+  return today.getDate() >= salaryDate ? 0 : 1
+}
+
 // Month report grade from savings rate.
 export function gradeForSavingsRate(rate) {
   if (!Number.isFinite(rate)) return null

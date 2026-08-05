@@ -16,6 +16,9 @@ export default function RecurringForm({ onClose, initial }) {
   const [category, setCategory] = useState(initial?.category ?? 'Bills')
   const [paymentMethod, setPaymentMethod] = useState(initial?.paymentMethod ?? 'Cash')
   const [country, setCountry] = useState(initial?.country ?? 'JP')
+  // Optional shop for recurring expenses (landlord, gym, provider) so the
+  // auto-posted bill lands in the store ranking like any other spend.
+  const [store, setStore] = useState(initial?.store ?? '')
   const [source, setSource] = useState(initial?.source ?? 'Salary')
   const [recipient, setRecipient] = useState(initial?.recipient ?? 'Parents')
   const [method, setMethod] = useState(initial?.method ?? 'Wise')
@@ -47,7 +50,7 @@ export default function RecurringForm({ onClose, initial }) {
         autoPost,
         lastGeneratedMonth: initial?.lastGeneratedMonth ?? null,
         ...(kind === 'expense'
-          ? { category, paymentMethod, country }
+          ? { category, paymentMethod, country, store: store.trim() }
           : kind === 'transfer'
             ? { recipient, method, fee: parseFloat(fee) || 0 }
             : { source }),
@@ -81,10 +84,10 @@ export default function RecurringForm({ onClose, initial }) {
               key={k}
               type="button"
               onClick={() => setKind(k)}
-              className={`rounded-xl py-2 text-sm font-medium capitalize transition-transform active:scale-95 ${
+              className={`rounded-xl border py-2 text-sm font-medium capitalize transition-transform active:scale-95 ${
                 kind === k
-                  ? 'bg-indigo-600 text-white dark:bg-indigo-500'
-                  : 'bg-gray-100 text-gray-600 dark:bg-neutral-800 dark:text-gray-300'
+                  ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-500'
+                  : 'border-gray-300/60 bg-gray-100 text-gray-600 dark:border-transparent dark:bg-neutral-800 dark:text-gray-300'
               }`}
             >
               {k}
@@ -117,6 +120,15 @@ export default function RecurringForm({ onClose, initial }) {
             />
           </Field>
         </div>
+
+        {/* 29, 30 and 31 don't exist in every month — say what happens instead
+            of leaving it to be discovered in February. */}
+        {parseInt(dayOfMonth, 10) > 28 && (
+          <p className="-mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+            Day {parseInt(dayOfMonth, 10)} means month end: it posts on the 30th in April and the
+            28th in February, dated the day the money actually moves.
+          </p>
+        )}
 
         {kind === 'expense' && (
           <div className="grid grid-cols-3 gap-2">
@@ -151,6 +163,17 @@ export default function RecurringForm({ onClose, initial }) {
           </div>
         )}
 
+        {kind === 'expense' && (
+          <Field label="Store / payee (optional)">
+            <input
+              value={store}
+              onChange={(e) => setStore(e.target.value)}
+              placeholder="e.g. Landlord, Softbank"
+              className="input"
+            />
+          </Field>
+        )}
+
         {kind === 'income' && (
           <Field label="Source">
             <input value={source} onChange={(e) => setSource(e.target.value)} className="input" />
@@ -176,7 +199,7 @@ export default function RecurringForm({ onClose, initial }) {
           </>
         )}
 
-        <label className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5 dark:bg-neutral-800/50">
+        <label className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-100/80 px-3 py-2.5 dark:border-transparent dark:bg-neutral-800/50">
           <span className="text-xs text-gray-600 dark:text-gray-300">
             Auto-post on due date
             <span className="block text-[11px] text-gray-500 dark:text-gray-400">

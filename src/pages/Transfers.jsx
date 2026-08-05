@@ -6,13 +6,15 @@ import { useSettings } from '../hooks/useSettings'
 import { useUndoableDelete } from '../hooks/useUndoableDelete'
 import { useLiveRate } from '../hooks/useLiveRate'
 import { formatJPY, formatINR, formatPercent, toDate } from '../lib/format'
-import { downloadCsv, formatDateForCsv } from '../lib/csv'
+import { sumIn } from '../lib/money'
+import { downloadCsv, formatDateForCsv, parseCsvDate } from '../lib/csv'
 import TransferForm from '../components/entry/TransferForm'
 import CsvImportButton from '../components/ui/CsvImportButton'
 import CollapsibleSection from '../components/ui/CollapsibleSection'
 import FloatingActionButton from '../components/ui/FloatingActionButton'
 import EmptyState from '../components/ui/EmptyState'
 import Skeleton from '../components/ui/Skeleton'
+import SwipeableRow from '../components/ui/SwipeableRow'
 
 export default function Transfers() {
   const { settings, loading: settingsLoading, save } = useSettings()
@@ -39,10 +41,19 @@ export default function Transfers() {
   const now = new Date()
 
   // Journey totals (everything since joining the company).
-  const salaryEarned = income.reduce((sum, i) => sum + (i.net ?? i.amount ?? 0), 0)
-  const sentAllTime = data.reduce((sum, t) => sum + (t.amountSent || 0), 0)
-  const receivedAllTime = data.reduce((sum, t) => sum + (t.amountReceived || 0), 0)
-  const saved = salaryEarned - sentAllTime
+  const salaryEarned = sumIn(income, 'JP', (i) => i.net ?? i.amount ?? 0)
+  // Money that actually left you for someone else. A transfer into your own
+  // Indian account is your money changing currency, not money sent home, so it
+  // is counted apart. The fee needs no adding: it is taken out of the amount
+  // sent, so `amountSent` is already everything that left you.
+  const toFamily = data.filter((t) => !t.toAccount)
+  const sentAllTime = toFamily.reduce((sum, t) => sum + (t.amountSent || 0), 0)
+  const sentToSelf = data
+    .filter((t) => t.toAccount)
+    .reduce((sum, t) => sum + (t.amountSent || 0), 0)
+  const receivedAllTime = toFamily.reduce((sum, t) => sum + (t.amountReceived || 0), 0)
+  // Everything that left Japan still comes off what you kept.
+  const saved = salaryEarned - sentAllTime - sentToSelf
   const sentPct = salaryEarned > 0 ? sentAllTime / salaryEarned : 0
   const months = joinDate ? differenceInCalendarMonths(now, joinDate) + 1 : 0
   const avgHistoricalRate = data.length
@@ -119,7 +130,9 @@ export default function Transfers() {
         { label: 'Exchange Rate', value: (r) => r.exchangeRate },
         { label: 'Fee', value: (r) => r.fee },
         { label: 'Recipient', value: (r) => r.recipient },
+        { label: 'Bank/UPI', value: (r) => r.recipientDetails },
         { label: 'Method', value: (r) => r.method },
+        { label: 'To Account', value: (r) => r.toAccount },
         { label: 'Note', value: (r) => r.note },
       ]
     )
@@ -128,15 +141,18 @@ export default function Transfers() {
   const importMapRow = (row) => {
     const sent = parseFloat(row['Amount Sent'])
     const received = parseFloat(row['Amount Received'])
-    if (!sent || !received || !row.Date) return null
+    const date = parseCsvDate(row.Date)
+    if (!sent || !received || !date) return null
     return {
       amountSent: sent,
       amountReceived: received,
       exchangeRate: parseFloat(row['Exchange Rate']) || received / sent,
       fee: parseFloat(row.Fee) || 0,
-      date: new Date(row.Date),
+      date,
       recipient: row.Recipient || 'Parents',
+      recipientDetails: row['Bank/UPI'] || '',
       method: row.Method || 'Wise',
+      toAccount: row['To Account'] || null,
       note: row.Note || '',
     }
   }
@@ -157,6 +173,7 @@ export default function Transfers() {
             months={months}
             salaryEarned={salaryEarned}
             sentAllTime={sentAllTime}
+            sentToSelf={sentToSelf}
             receivedAllTime={receivedAllTime}
             saved={saved}
             sentPct={sentPct}
@@ -219,10 +236,26 @@ export default function Transfers() {
           </>
         )}
         {!loading && filteredList.length === 0 && (
-          <EmptyState icon="💸" message="No transfers match — send your first one to family" />
+          <EmptyState
+            icon="💸"
+            message="No transfers match — send your first one to family"
+            actionLabel="+ Add transfer"
+            onAction={() => {
+              setEditing(null)
+              setShowForm(true)
+            }}
+          />
         )}
         {filteredList.map((t) => (
-          <div key={t.id} className="card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out]">
+          <SwipeableRow
+            key={t.id}
+            onEdit={() => {
+              setEditing(t)
+              setShowForm(true)
+            }}
+            onDelete={() => requestDelete(t.id)}
+          >
+          <div className="card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out]">
             <span className="icon-tile">
               <Send size={15} aria-hidden="true" />
             </span>
@@ -231,7 +264,13 @@ export default function Transfers() {
                 {formatJPY(t.amountSent)} → {formatINR(t.amountReceived)}
               </p>
               <p className="text-xs text-gray-500 truncate dark:text-gray-400">
-                {toDate(t.date)?.toLocaleDateString()} · {t.method} · {t.recipient}
+                {toDate(t.date)?.toLocaleString([], {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}{' '}
+                · {t.method} · {t.recipient}
+                {t.toAccount && ` · 🇮🇳 into ${t.toAccount}`}
+                {t.recipientDetails && ` · ${t.recipientDetails}`}
                 {t.note && ` · ${t.note}`}
               </p>
             </div>
@@ -257,6 +296,7 @@ export default function Transfers() {
               </button>
             </div>
           </div>
+          </SwipeableRow>
         ))}
       </div>
 
@@ -301,6 +341,7 @@ function JourneyCard({
   months,
   salaryEarned,
   sentAllTime,
+  sentToSelf,
   receivedAllTime,
   saved,
   sentPct,
@@ -333,7 +374,7 @@ function JourneyCard({
             type="date"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="input flex-1"
+            className="input min-w-0 flex-1"
             required
           />
           <button type="submit" className="btn-primary px-4 text-sm">
@@ -375,7 +416,10 @@ function JourneyCard({
 
       <div className="grid grid-cols-3 gap-3 text-center">
         <Stat label="Salary earned" value={formatJPY(salaryEarned)} />
-        <Stat label="Sent home" value={formatJPY(sentAllTime)} />
+        <Stat
+          label={sentToSelf > 0 ? 'Sent home (to family)' : 'Sent home'}
+          value={formatJPY(sentAllTime)}
+        />
         <Stat
           label="Saved"
           value={formatJPY(saved)}
@@ -435,7 +479,7 @@ function TransferPlanner({ liveRate, methodStats, avgHistoricalRate }) {
         />
       </label>
       {inr > 0 && (
-        <div className="space-y-1.5 rounded-xl bg-gray-50 p-3 text-sm dark:bg-neutral-800/50">
+        <div className="space-y-1.5 rounded-xl border border-gray-200 bg-gray-100/80 p-3 text-sm dark:border-transparent dark:bg-neutral-800/50">
           <p className="flex items-center justify-between text-gray-700 dark:text-gray-200">
             <span>Send at today's rate ({liveRate.toFixed(3)})</span>
             <span className="font-bold tabular-nums">{formatJPY(Math.ceil(jpyNeeded))}</span>
@@ -449,7 +493,7 @@ function TransferPlanner({ liveRate, methodStats, avgHistoricalRate }) {
               <span className="tabular-nums">{formatJPY(Math.round(fee))}</span>
             </p>
           )}
-          <p className="flex items-center justify-between border-t border-gray-200 pt-1.5 text-xs font-semibold text-gray-700 dark:border-white/5 dark:text-gray-200">
+          <p className="flex items-center justify-between border-t border-gray-300 pt-1.5 text-xs font-semibold text-gray-700 dark:border-white/5 dark:text-gray-200">
             <span>Total from your account</span>
             <span className="tabular-nums">{formatJPY(Math.ceil(jpyNeeded + fee))}</span>
           </p>

@@ -7,13 +7,7 @@ import { useToast } from '../../context/ToastContext'
 import { addRecordAndMarkRecurring } from '../../lib/firestore'
 import { fetchLiveJpyInrRate } from '../../lib/exchangeRate'
 import { formatJPY } from '../../lib/format'
-
-// Clamp a target day to the current month's length, return a Date in this month.
-function dateForDay(day) {
-  const now = new Date()
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  return new Date(now.getFullYear(), now.getMonth(), Math.min(day, lastDay))
-}
+import { dateForDay, dueDay, isDue } from '../../lib/recurringDue'
 
 const ICONS = { income: '💰', transfer: '💸', expense: '🧾' }
 
@@ -23,12 +17,10 @@ export default function RecurringDue() {
   const { toast } = useToast()
   const autoPosting = useRef(new Set())
 
-  const monthKey = format(new Date(), 'yyyy-MM')
-  const today = new Date().getDate()
+  const now = new Date()
+  const monthKey = format(now, 'yyyy-MM')
 
-  const due = data.filter(
-    (r) => r.active && r.lastGeneratedMonth !== monthKey && today >= Math.min(r.dayOfMonth, 28)
-  )
+  const due = data.filter((r) => isDue(r, now, monthKey))
 
   // Builds the record for a recurring item and writes it together with the
   // recurring doc's lastGeneratedMonth in a single atomic batch.
@@ -71,6 +63,7 @@ export default function RecurringDue() {
         category: r.category || 'Bills',
         country: r.country || 'JP',
         paymentMethod: r.paymentMethod || 'Cash',
+        store: r.store || '',
         note: r.label,
         date,
       }
@@ -130,7 +123,10 @@ export default function RecurringDue() {
                 {ICONS[r.kind] || '🧾'} {r.label}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {formatJPY(r.amount)} · day {r.dayOfMonth}
+                {/* Say the day it actually lands on this month — "day 31" in
+                    February is a promise the calendar can't keep. */}
+                {formatJPY(r.amount)} · day {dueDay(r.dayOfMonth, now)}
+                {dueDay(r.dayOfMonth, now) !== r.dayOfMonth && ` (set to ${r.dayOfMonth} — month end)`}
               </p>
             </div>
             <div className="flex gap-2 shrink-0">

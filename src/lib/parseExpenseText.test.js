@@ -47,6 +47,75 @@ describe('parseExpenseText', () => {
   it('strips the amount and noise words from the note', () => {
     const result = parseExpenseText('lunch at Saizeriya 1200 debit card')
     expect(result.amount).toBe(1200)
-    expect(result.note).toBe('lunch at Saizeriya')
+    expect(result.note).toBe('lunch')
+  })
+
+  it('pulls the store out of "at <shop>"', () => {
+    const result = parseExpenseText('lunch at Saizeriya 1200 debit card')
+    expect(result.store).toBe('Saizeriya')
+  })
+
+  it('pulls the store out of "from <shop>" and after the amount', () => {
+    expect(parseExpenseText('milk 250 from Family Mart').store).toBe('Family Mart')
+  })
+
+  it('drops payment words trailing the store name', () => {
+    const result = parseExpenseText('coffee at Starbucks cash 450')
+    expect(result.store).toBe('Starbucks')
+    expect(result.paymentMethod).toBe('Cash')
+    expect(result.note).toBe('coffee')
+  })
+
+  it('leaves the store empty when no shop is named', () => {
+    expect(parseExpenseText('coffee 450').store).toBe('')
+  })
+})
+
+// ---- Journeys ---------------------------------------------------------------
+// Transport is a route, not a purchase. Before this the store regex swallowed
+// the whole sentence and produced a "shop" called
+// "aeon nogata to nogata train station which costed around".
+describe('transport routes', () => {
+  it('splits the real sentence into two places and no shop', () => {
+    const r = parseExpenseText(
+      'today i traveled in bus from aeon nogata to nogata train station which costed around 270yen i paid with pasmo'
+    )
+    expect(r.category).toBe('Transport')
+    expect(r.amount).toBe(270)
+    expect(r.fromPlace).toBe('Aeon Nogata')
+    expect(r.toPlace).toBe('Nogata Train Station')
+    expect(r.paymentMethod).toBe('Pasmo')
+    expect(r.store).toBe('')
+  })
+
+  it('reads the short forms', () => {
+    expect(parseExpenseText('bus 270 from nogata to kokura')).toMatchObject({
+      fromPlace: 'Nogata',
+      toPlace: 'Kokura',
+    })
+    expect(parseExpenseText('train 500 nogata → hakata')).toMatchObject({
+      fromPlace: 'Nogata',
+      toPlace: 'Hakata',
+    })
+  })
+
+  it('takes a destination alone when no origin was said', () => {
+    const r = parseExpenseText('bus 270 to kokura')
+    expect(r.fromPlace).toBe('')
+    expect(r.toPlace).toBe('Kokura')
+  })
+
+  // The other categories must be completely unaffected.
+  it('leaves a shop purchase as a shop purchase', () => {
+    const r = parseExpenseText('lunch at saizeriya 1200')
+    expect(r.store).toBe('saizeriya')
+    expect(r.fromPlace).toBe('')
+    expect(r.toPlace).toBe('')
+  })
+
+  it('does not invent a route from a non-transport sentence containing "to"', () => {
+    const r = parseExpenseText('gave 3000 to kenji')
+    expect(r.fromPlace).toBe('')
+    expect(r.toPlace).toBe('')
   })
 })

@@ -5,24 +5,6 @@ function dayKey(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-// Consecutive days (ending today or yesterday) with at least one logged record.
-// Today not being logged yet doesn't break the streak — you get the day as grace.
-export function computeStreak(records, now = new Date()) {
-  const days = new Set()
-  for (const r of records) {
-    const d = toDate(r.date)
-    if (d) days.add(dayKey(d))
-  }
-  const cursor = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  if (!days.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1)
-  let streak = 0
-  while (days.has(dayKey(cursor))) {
-    streak++
-    cursor.setDate(cursor.getDate() - 1)
-  }
-  return streak
-}
-
 // Days from today until the next salary day (0 = today). Clamps the configured
 // day to each month's length (salary day 31 pays on Feb 28).
 export function daysUntilSalary(salaryDay, now = new Date()) {

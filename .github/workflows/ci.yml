@@ -1,0 +1,63 @@
+name: CI
+
+# Every push and PR: lint, test, and prove the app still builds.
+#
+# The VITE_* values are injected from GitHub Secrets at build time. They are not
+# in the repository and must never be — .env is gitignored and .env.example
+# carries only the variable NAMES.
+#
+# Note on VITE_GEMINI_API_KEY specifically: it is a client key that ships inside
+# the built bundle by design, protected by an HTTP-referrer restriction, an API
+# restriction, and no billing on the project rather than by secrecy. Keeping it
+# in Secrets stops it entering git history, where it would be permanent and
+# would trip GitHub's secret scanning.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_MEASUREMENT_ID: ${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        run: npm run build
+
+      # Fails the build if a key ever reaches a tracked file. Cheap, and it
+      # catches the exact mistake that is easy to make with a client-side key:
+      # pasting the real value into .env.example instead of .env.
+      - name: No secrets in tracked files
+        run: |
+          if git ls-files | xargs grep -lE 'AQ\.Ab[A-Za-z0-9_-]{20,}|AIza[A-Za-z0-9_-]{30,}' 2>/dev/null; then
+            echo "::error::An API key is present in a tracked file. Move it to .env (gitignored)."
+            exit 1
+          fi
+          echo "No API keys in tracked files."

@@ -56,11 +56,11 @@ export default function PinGate({ children }) {
   const lockoutSeconds = Math.ceil(lockoutMs / 1000)
 
   return (
-    <div className="min-h-svh flex flex-col items-center justify-center gap-5 bg-gray-50 px-6 dark:bg-neutral-950">
+    <div className="min-h-svh flex flex-col items-center justify-center gap-5 bg-gray-900 px-6 dark:bg-neutral-950">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 text-white dark:bg-indigo-500">
         <Lock size={24} aria-hidden="true" />
       </div>
-      <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Enter PIN to continue</h1>
+      <h1 className="text-sm font-semibold text-gray-100">Enter PIN to continue</h1>
       <form onSubmit={handleSubmit} className="w-full max-w-xs space-y-3">
         <input
           type="password"

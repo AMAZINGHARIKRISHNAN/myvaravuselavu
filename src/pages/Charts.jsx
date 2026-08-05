@@ -13,14 +13,19 @@ import {
 } from 'recharts'
 import { format, subMonths } from 'date-fns'
 import { useCollection } from '../hooks/useCollection'
+import { useSettings } from '../hooks/useSettings'
 import { currentMonthRange, lastNMonthsRange, currentYearRange } from '../lib/dateRanges'
+import { profitEvents } from '../lib/profit'
 import { formatJPY, formatINR, formatPercent, toDate } from '../lib/format'
 import { CATEGORY_ICONS } from '../lib/constants'
+import { rankStores, storeCoverage } from '../lib/stores'
+import { sumIn, inCountry } from '../lib/money'
 import { useTheme } from '../context/ThemeContext'
+import { chartTheme, donutSlices, colorForKey } from '../lib/chartTheme'
+import GradientDonut from '../components/charts/GradientDonut'
 
 // Series colors for the trend chart, CVD- and contrast-validated for both the
 // white and neutral-900 card surfaces (dataviz six-checks).
-const SERIES = { income: '#059669', expenses: '#f43f5e', transfers: '#6366f1' }
 
 function groupSum(records, keyFn, amountFn = (r) => r.amount) {
   const totals = {}
@@ -35,7 +40,7 @@ const compactYen = (v) =>
   `¥${new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(v)}`
 
 // GitHub-style month calendar: green = no-spend day, indigo intensity = spend
-// level. Future days are hollow. Pairs with the logging streak as a habit game.
+// level. Future days are hollow.
 function SpendHeatmap({ expenses, formatter }) {
   const now = new Date()
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -51,7 +56,7 @@ function SpendHeatmap({ expenses, formatter }) {
   const max = Math.max(...Object.values(totals), 1)
 
   const cellClass = (day) => {
-    if (day > today) return 'border border-dashed border-gray-200 text-gray-300 dark:border-neutral-700 dark:text-neutral-600'
+    if (day > today) return 'border border-dashed border-gray-300 text-gray-400 dark:border-neutral-700 dark:text-neutral-600'
     const v = totals[day] || 0
     if (v === 0) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
     if (v / max > 0.66) return 'bg-indigo-600 text-white'
@@ -99,7 +104,7 @@ function SpendHeatmap({ expenses, formatter }) {
 
 // Ranked horizontal bars: identity lives in the row label, so every bar wears
 // the single brand hue — amounts and shares are direct-labeled on each row.
-function RankedBars({ data, formatter, icons }) {
+function RankedBars({ data, formatter, icons, theme }) {
   const sorted = [...data].sort((a, b) => b.value - a.value)
   const total = sorted.reduce((sum, d) => sum + d.value, 0)
   const max = sorted[0]?.value || 1
@@ -118,10 +123,51 @@ function RankedBars({ data, formatter, icons }) {
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-neutral-800">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 animate-[progress-fill_0.7s_ease-out] transition-all duration-500"
-              style={{ width: `${(d.value / max) * 100}%` }}
+              className="h-full rounded-full animate-[progress-fill_0.7s_ease-out] transition-all duration-500"
+              style={{
+                width: `${(d.value / max) * 100}%`,
+                // Same colour the slice has in the ring above, so the two
+                // halves of the card are obviously the same data.
+                background: theme
+                  ? `linear-gradient(90deg, ${colorForKey(d.name, theme.categories)}, ${colorForKey(d.name, theme.categories)}99)`
+                  : undefined,
+                boxShadow: theme?.glow ? `0 0 10px ${colorForKey(d.name, theme.categories)}55` : undefined,
+              }}
             />
           </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// "Where does the money actually go?" — same ranked-bar language as the
+// category chart, but each row also carries trip count and average spend,
+// which is what turns a shop list into a decision ("¥400 × 22 visits").
+function StoreBars({ stores, formatter }) {
+  const max = stores[0]?.total || 1
+  const total = stores.reduce((sum, s) => sum + s.total, 0)
+  return (
+    <div className="space-y-3">
+      {stores.map((s, i) => (
+        <div key={s.name}>
+          <div className="mb-1 flex items-baseline justify-between gap-2 text-xs">
+            <span className="min-w-0 truncate font-medium text-gray-700 dark:text-gray-200">
+              <span className="text-gray-400 dark:text-gray-500">{i + 1}.</span> 🏪 {s.name}
+            </span>
+            <span className="shrink-0 tabular-nums text-gray-500 dark:text-gray-400">
+              {formatter(s.total)} · {total ? Math.round((s.total / total) * 100) : 0}%
+            </span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-neutral-800">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 animate-[progress-fill_0.7s_ease-out] transition-all duration-500"
+              style={{ width: `${(s.total / max) * 100}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[10px] tabular-nums text-gray-400 dark:text-gray-500">
+            {s.count} {s.count === 1 ? 'visit' : 'visits'} · {formatter(Math.round(s.total / s.count))} avg
+          </p>
         </div>
       ))}
     </div>
@@ -139,21 +185,17 @@ function ChartCard({ title, className = '', children }) {
 
 export default function Charts() {
   const [pieCountry, setPieCountry] = useState('JP')
-  const { theme } = useTheme()
+  const { theme, skin } = useTheme()
   const isDark = theme === 'dark'
-  const gridColor = isDark ? '#232b3d' : '#e5e7eb'
-  const tickColor = isDark ? '#8b93a7' : '#6b7280'
-  const tooltipStyle = isDark
-    ? {
-        backgroundColor: '#0f1420',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 12,
-        color: '#f3f4f6',
-        boxShadow: '0 8px 30px rgba(0,0,0,0.45)',
-      }
-    : { borderRadius: 12, border: '1px solid #e5e7eb', boxShadow: '0 8px 30px rgba(0,0,0,0.08)' }
-  const legendColor = isDark ? '#d4d4d4' : '#374151'
-  const accent = isDark ? '#818cf8' : '#6366f1'
+  // Every colour, gradient and ring dimension below comes from the active suit,
+  // so switching skins re-draws the data as well as the furniture.
+  const ct = useMemo(() => chartTheme(skin, isDark), [skin, isDark])
+  const gridColor = ct.grid
+  const tickColor = ct.tick
+  const tooltipStyle = ct.tooltip
+  const legendColor = ct.legend
+  const accent = ct.accent
+  const SERIES = ct.series
 
   const monthRange = useMemo(currentMonthRange, [])
   const sixMonthRange = useMemo(() => lastNMonthsRange(6), [])
@@ -166,6 +208,16 @@ export default function Charts() {
   const yearIncome = useCollection('income', { dateRange: yearRange })
   const yearExpenses = useCollection('expenses', { dateRange: yearRange })
   const yearTransfers = useCollection('transfers', { dateRange: yearRange })
+  // Profit sources over the same 6 months. Shared listeners (from the Profit
+  // page/card) mean these add no extra reads.
+  const { settings } = useSettings()
+  const profitFriends = useCollection('friendPurchases')
+  const profitClaims = useCollection('commuteClaims')
+  const profitOrders = useCollection('onlineOrders')
+  const profitPasses = useCollection('commutePasses')
+  const profitTrips = useCollection('commuteTrips')
+  const profitWindfalls = useCollection('windfalls')
+  const profitLosses = useCollection('losses')
 
   // JP and IN expenses are different currencies — pies never mix them, a toggle switches between them.
   const jpExpenses = useMemo(
@@ -183,9 +235,19 @@ export default function Charts() {
   const byCategory = useMemo(() => groupSum(pieExpenses, (r) => r.category), [pieExpenses])
   const byPaymentMethod = useMemo(() => groupSum(pieExpenses, (r) => r.paymentMethod), [pieExpenses])
 
+  const monthStores = useMemo(() => rankStores(pieExpenses), [pieExpenses])
+  const storeTagRate = useMemo(() => storeCoverage(pieExpenses), [pieExpenses])
+  // The year view answers the real question — "which shop got the most of my
+  // money overall" — where a single month is too short to be meaningful.
+  const yearStores = useMemo(
+    () => rankStores(yearExpenses.data.filter((e) => (e.country || 'JP') !== 'IN'), { limit: 5 }),
+    [yearExpenses.data]
+  )
+
   const yearSummary = useMemo(() => {
-    const income = yearIncome.data.reduce((sum, r) => sum + (r.amount || 0), 0)
-    const expenses = yearExpenses.data.reduce((sum, r) => sum + (r.amount || 0), 0)
+    // Yen only: the card is labelled in ¥, and rupee spending is other money.
+    const income = sumIn(yearIncome.data)
+    const expenses = sumIn(yearExpenses.data)
     const sent = yearTransfers.data.reduce((sum, r) => sum + (r.amountSent || 0), 0)
     const saved = income - expenses - sent
     return { income, expenses, sent, saved }
@@ -210,8 +272,8 @@ export default function Charts() {
       return totals
     }
 
-    const incomeTotals = sumByMonth(rangeIncome.data)
-    const expenseTotals = sumByMonth(rangeExpenses.data)
+    const incomeTotals = sumByMonth(inCountry(rangeIncome.data))
+    const expenseTotals = sumByMonth(inCountry(rangeExpenses.data))
     const transferTotals = sumByMonth(rangeTransfers.data, (r) => r.amountSent)
 
     return months.map(({ key, label }) => {
@@ -223,11 +285,56 @@ export default function Charts() {
     })
   }, [rangeIncome.data, rangeExpenses.data, rangeTransfers.data])
 
+  // Realized profit per month, from every source (friend deals, reimbursement
+  // surplus, refunds, passes, windfalls). Pending money is left out — this
+  // tracks what actually landed.
+  const profitTrend = useMemo(() => {
+    const months = []
+    for (let i = 5; i >= 0; i--) {
+      const d = subMonths(new Date(), i)
+      months.push({ key: format(d, 'yyyy-MM'), label: format(d, 'MMM') })
+    }
+    const events = profitEvents({
+      friendPurchases: profitFriends.data,
+      claims: profitClaims.data,
+      orders: profitOrders.data,
+      passes: profitPasses.data,
+      trips: profitTrips.data,
+      windfalls: profitWindfalls.data,
+      losses: profitLosses.data,
+      fare: settings?.commute?.fare ? settings.commute.fare * 2 : 560,
+    })
+    const totals = {}
+    for (const e of events) {
+      if (e.pending || e.country === 'IN' || !e.date) continue
+      const key = format(e.date, 'yyyy-MM')
+      totals[key] = (totals[key] || 0) + e.amount
+    }
+    return months.map(({ key, label }) => ({ month: label, profit: totals[key] || 0 }))
+  }, [
+    profitFriends.data,
+    profitClaims.data,
+    profitOrders.data,
+    profitPasses.data,
+    profitTrips.data,
+    profitWindfalls.data,
+    profitLosses.data,
+    settings?.commute?.fare,
+  ])
+  const hasProfitTrend = profitTrend.some((m) => m.profit !== 0)
+
   const noExpensesThisMonth = !monthExpenses.loading && pieExpenses.length === 0
 
+  // Six named slices plus a rolled-up "Other": more than that and a ring stops
+  // being readable, however pretty it looks.
+  const categoryDonut = useMemo(
+    () => donutSlices(byCategory, { max: 6, palette: ct.categories }),
+    [byCategory, ct]
+  )
+
   return (
-    <div className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
-      <ChartCard title="🗓️ Year in review" className="lg:col-span-2">
+    <div className="space-y-4">
+      <ChartCard title="🗓️ Year in review">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <YearStat label="Income" value={formatJPY(yearSummary.income)} icon="💰" />
           <YearStat label="Expenses" value={formatJPY(yearSummary.expenses)} icon="🧾" />
@@ -242,7 +349,7 @@ export default function Charts() {
       </ChartCard>
 
       {hasInExpenses && (
-        <div className="flex rounded-full border border-gray-200 bg-white p-1 dark:border-white/5 dark:bg-neutral-900 lg:col-span-2 lg:max-w-sm">
+        <div className="flex rounded-full border border-gray-300/80 bg-white p-1 shadow-sm dark:border-white/5 dark:bg-neutral-900 dark:shadow-none lg:max-w-sm">
           <CountryToggleButton active={pieCountry === 'JP'} onClick={() => setPieCountry('JP')}>
             🇯🇵 Japan
           </CountryToggleButton>
@@ -252,30 +359,79 @@ export default function Charts() {
         </div>
       )}
 
-      <ChartCard title={`Spend by category (this month${hasInExpenses ? `, ${pieCountry === 'IN' ? 'India' : 'Japan'}` : ''})`}>
-        {noExpensesThisMonth ? (
-          <EmptyState />
-        ) : (
-          <RankedBars data={byCategory} formatter={pieFormatter} icons={CATEGORY_ICONS} />
-        )}
-      </ChartCard>
+      {/* Balanced two-column flow rather than a grid. A grid row is as tall as
+          its tallest cell, so the short "payment method" card sat beside the
+          tall category ring and left a hole underneath it. Columns fill and
+          balance, so the space gets used.
+          `break-inside-avoid` stops a card being sliced across the gutter. */}
+      <div className="space-y-4 lg:columns-2 lg:gap-4 lg:space-y-0 [&>*]:break-inside-avoid lg:[&>*]:mb-4">
+        <ChartCard title={`Spend by category (this month${hasInExpenses ? `, ${pieCountry === 'IN' ? 'India' : 'Japan'}` : ''})`}>
+          {noExpensesThisMonth ? (
+            <EmptyState />
+          ) : (
+            <div className="space-y-4">
+              {/* The ring answers "what is this month shaped like?" at a glance;
+                  the bars underneath answer "how much, exactly?". Neither is
+                  enough on its own, so the card carries both. */}
+              <GradientDonut
+                slices={categoryDonut.slices}
+                total={categoryDonut.total}
+                centerLabel="Spent"
+                centerValue={pieFormatter(categoryDonut.total)}
+                formatValue={pieFormatter}
+                theme={ct}
+              />
+              <RankedBars data={byCategory} formatter={pieFormatter} icons={CATEGORY_ICONS} theme={ct} />
+            </div>
+          )}
+        </ChartCard>
 
-      <ChartCard title={`Spend by payment method (this month${hasInExpenses ? `, ${pieCountry === 'IN' ? 'India' : 'Japan'}` : ''})`}>
-        {noExpensesThisMonth ? (
-          <EmptyState />
-        ) : (
-          <RankedBars data={byPaymentMethod} formatter={pieFormatter} />
-        )}
-      </ChartCard>
+        <ChartCard title={`Spend by payment method (this month${hasInExpenses ? `, ${pieCountry === 'IN' ? 'India' : 'Japan'}` : ''})`}>
+          {noExpensesThisMonth ? (
+            <EmptyState />
+          ) : (
+            <RankedBars data={byPaymentMethod} formatter={pieFormatter} />
+          )}
+        </ChartCard>
+
+        <ChartCard title={`🏪 Top stores (this month${hasInExpenses ? `, ${pieCountry === 'IN' ? 'India' : 'Japan'}` : ''})`}>
+          {monthStores.length === 0 ? (
+            <p className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">
+              No stores tagged yet — add the shop name when you log an expense and
+              your most-visited places show up here.
+            </p>
+          ) : (
+            <>
+              <StoreBars stores={monthStores} formatter={pieFormatter} />
+              {/* Ranking only sees tagged expenses, so say so when most aren't. */}
+              {storeTagRate < 0.6 && (
+                <p className="mt-3 text-[11px] text-gray-400 dark:text-gray-500">
+                  Only {Math.round(storeTagRate * 100)}% of this month's expenses have a store
+                  — tag more to make this ranking complete.
+                </p>
+              )}
+            </>
+          )}
+        </ChartCard>
+
+        <ChartCard title="🏆 Top stores (this year)">
+          {yearStores.length === 0 ? (
+            <p className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">
+              Nothing tagged this year yet.
+            </p>
+          ) : (
+            <StoreBars stores={yearStores} formatter={formatJPY} />
+          )}
+        </ChartCard>
+      </div>
 
       <ChartCard
         title={`No-spend heatmap (this month${hasInExpenses ? `, ${pieCountry === 'IN' ? 'India' : 'Japan'}` : ''})`}
-        className="lg:col-span-2"
       >
         <SpendHeatmap expenses={pieExpenses} formatter={pieFormatter} />
       </ChartCard>
 
-      <ChartCard title="Income vs expenses vs transfers (last 6 months)" className="lg:col-span-2">
+      <ChartCard title="Income vs expenses vs transfers (last 6 months)">
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={monthlyTrend}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
@@ -290,7 +446,7 @@ export default function Charts() {
         </ResponsiveContainer>
       </ChartCard>
 
-      <ChartCard title="Savings rate trend" className="lg:col-span-2">
+      <ChartCard title="Savings rate trend">
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={monthlyTrend}>
             <defs>
@@ -315,6 +471,20 @@ export default function Charts() {
           </AreaChart>
         </ResponsiveContainer>
       </ChartCard>
+
+      {hasProfitTrend && (
+        <ChartCard title="📈 Profit made (last 6 months)">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={profitTrend}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+              <XAxis dataKey="month" fontSize={12} stroke={tickColor} />
+              <YAxis fontSize={12} stroke={tickColor} tickFormatter={compactYen} width={52} />
+              <Tooltip formatter={(value) => formatJPY(value)} contentStyle={tooltipStyle} />
+              <Bar dataKey="profit" fill={SERIES.income} name="Profit" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
     </div>
   )
 }
@@ -327,7 +497,7 @@ function CountryToggleButton({ active, onClick, children }) {
       className={`flex-1 rounded-full py-2 text-sm font-medium transition-all active:scale-95 touch-manipulation ${
         active
           ? 'bg-indigo-600 text-white dark:bg-indigo-500'
-          : 'text-gray-500 dark:text-gray-400'
+          : 'text-gray-600 dark:text-gray-400'
       }`}
     >
       {children}
@@ -350,8 +520,10 @@ function YearStat({ label, value, icon, positive }) {
       : positive
         ? 'text-green-600 dark:text-green-400'
         : 'text-red-500 dark:text-red-400'
+  // `stat-tile` is inert on flat skins and becomes a framed instrument readout
+  // under a HUD — see index.css.
   return (
-    <div className="rounded-2xl bg-gray-50 p-3 dark:bg-neutral-800/50">
+    <div className="stat-tile rounded-2xl border border-gray-200 bg-gray-100/80 p-3 dark:border-transparent dark:bg-neutral-800/50">
       <div className="flex items-center gap-1.5">
         <span className="text-sm">{icon}</span>
         <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">{label}</p>

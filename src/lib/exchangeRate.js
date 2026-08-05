@@ -20,6 +20,11 @@ export async function fetchLiveJpyInrRate() {
   const rate = json?.rates?.INR
   if (!rate) throw new Error('INR rate missing from response')
 
-  localStorage.setItem(CACHE_KEY, JSON.stringify({ rate, fetchedAt: Date.now() }))
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ rate, fetchedAt: Date.now() }))
+  } catch {
+    // Storage full or blocked (private mode) — we already have the rate, so
+    // failing to cache it must not fail the whole call.
+  }
   return rate
 }

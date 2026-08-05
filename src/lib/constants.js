@@ -11,6 +11,8 @@ export const CATEGORY_ICONS = {
   Other: '📌',
 }
 
-export const NON_ACCOUNT_PAYMENT_METHODS = ['Cash', 'Edenred', 'UPI']
+// 'Pasmo' also drives the Pasmo balance on the Commute page: every expense
+// paid with it (anywhere in the app) deducts from the card's balance.
+export const NON_ACCOUNT_PAYMENT_METHODS = ['Cash', 'Pasmo', 'nimoca', 'Edenred', 'UPI']
 
 export const COUNTRIES = ['JP', 'IN']

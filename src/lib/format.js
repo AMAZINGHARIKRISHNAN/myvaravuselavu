@@ -22,6 +22,16 @@ export function toDate(value) {
   return new Date(value)
 }
 
+// Midnight of whatever day a value falls on, in LOCAL time. Reconcile points
+// live at the start of their day: an anchor stamped at 23:50 would otherwise
+// skip everything logged earlier that same day, and a record dated "12:00 AM"
+// would land before an anchor set at noon.
+export function startOfDay(value) {
+  const d = value ? toDate(value) : new Date()
+  if (!d || Number.isNaN(d.getTime())) return null
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
 // Formats a Date/Timestamp for <input type="date"> in LOCAL time.
 // (toISOString() is UTC and shows the wrong day for morning JST times.)
 export function toDateInputValue(value) {
@@ -38,4 +48,24 @@ export function parseDateInput(str) {
   const now = new Date()
   const isToday = now.getFullYear() === y && now.getMonth() === m - 1 && now.getDate() === d
   return isToday ? now : new Date(y, m - 1, d, 12)
+}
+
+// Formats a Date/Timestamp for <input type="datetime-local"> in LOCAL time
+// ("YYYY-MM-DDTHH:mm"). Used where the exact moment matters — a remittance you
+// want to match against the Wise confirmation, say — not just the day.
+export function toDateTimeInputValue(value) {
+  const d = value ? toDate(value) : new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+// Parses a datetime-local value ("YYYY-MM-DDTHH:mm") as a LOCAL Date. Falls
+// back to the date-only parser if no time part is present.
+export function parseDateTimeInput(str) {
+  if (!str) return new Date()
+  const [datePart, timePart] = str.split('T')
+  if (!timePart) return parseDateInput(datePart)
+  const [y, m, d] = datePart.split('-').map(Number)
+  const [hh, mm] = timePart.split(':').map(Number)
+  return new Date(y, m - 1, d, hh || 0, mm || 0)
 }

@@ -19,10 +19,10 @@ export default function PaymentMethodGrid({ accounts, value, country, onSelect }
             key={opt.id}
             type="button"
             onClick={() => handleSelect(opt)}
-            className={`rounded-2xl py-3 px-2 text-sm font-medium transition-transform duration-75 active:scale-90 touch-manipulation ${
+            className={`rounded-2xl border py-3 px-2 text-sm font-medium transition-transform duration-75 active:scale-90 touch-manipulation ${
               value === opt.label
-                ? 'bg-indigo-600 text-white dark:bg-indigo-500'
-                : 'bg-gray-100 text-gray-800 dark:bg-neutral-800 dark:text-gray-100'
+                ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-500'
+                : 'border-gray-300/60 bg-gray-100 text-gray-800 dark:border-transparent dark:bg-neutral-800 dark:text-gray-100'
             }`}
           >
             {opt.label}
@@ -40,10 +40,10 @@ export default function PaymentMethodGrid({ accounts, value, country, onSelect }
                 key={c}
                 type="button"
                 onClick={() => handleSelect({ id: value, label: value, country: c })}
-                className={`rounded-2xl py-2 text-sm font-medium transition-transform duration-75 active:scale-90 touch-manipulation ${
+                className={`rounded-2xl border py-2 text-sm font-medium transition-transform duration-75 active:scale-90 touch-manipulation ${
                   country === c
-                    ? 'bg-indigo-600 text-white dark:bg-indigo-500'
-                    : 'bg-gray-100 text-gray-800 dark:bg-neutral-800 dark:text-gray-100'
+                    ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-500'
+                    : 'border-gray-300/60 bg-gray-100 text-gray-800 dark:border-transparent dark:bg-neutral-800 dark:text-gray-100'
                 }`}
               >
                 {c}

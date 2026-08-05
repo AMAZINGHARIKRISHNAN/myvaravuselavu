@@ -14,7 +14,7 @@ export default function ToastContainer() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="pointer-events-auto flex w-full max-w-sm items-center justify-between gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-sm text-white shadow-xl animate-[toast-in_0.2s_ease-out] dark:bg-neutral-100 dark:text-neutral-900"
+          className="pointer-events-auto flex w-full max-w-sm items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 text-sm text-gray-900 shadow-xl ring-1 ring-black/5 animate-[toast-in_0.2s_ease-out] dark:bg-neutral-100 dark:text-neutral-900 dark:ring-0"
         >
           <span>{t.message}</span>
           {t.actionLabel && (
@@ -24,7 +24,7 @@ export default function ToastContainer() {
                 t.onAction?.()
                 dismiss(t.id)
               }}
-              className="shrink-0 font-semibold text-indigo-300 dark:text-indigo-600"
+              className="shrink-0 font-semibold text-indigo-600"
             >
               {t.actionLabel}
             </button>

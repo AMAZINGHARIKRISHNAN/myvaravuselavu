@@ -1,26 +1,59 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useToast } from '../context/ToastContext'
 
 export function useUndoableDelete(remove, label) {
   const { toast } = useToast()
   const [pendingIds, setPendingIds] = useState(() => new Set())
+  
+  // Keep mutable references for the unmount and beforeunload handlers
+  const pendingRef = useRef(new Set())
+  const removeRef = useRef(remove)
+  removeRef.current = remove
 
   const clearPending = (id) => {
-    setPendingIds((prev) => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
+    pendingRef.current.delete(id)
+    setPendingIds(new Set(pendingRef.current))
   }
 
+  // Effect to handle beforeunload (tab close/refresh) and unmount
+  useEffect(() => {
+    const flushDeletes = () => {
+      // Execute any remaining deletes immediately
+      pendingRef.current.forEach((id) => {
+        try {
+          removeRef.current(id)
+        } catch (e) {
+          console.error('Failed to flush delete during cleanup:', e)
+        }
+      })
+      pendingRef.current.clear()
+    }
+
+    // iOS Safari — including the installed PWA — frequently never fires
+    // `beforeunload`; `pagehide` is the one teardown event it does deliver, so
+    // both are wired up and flushDeletes() is written to be idempotent.
+    window.addEventListener('beforeunload', flushDeletes)
+    window.addEventListener('pagehide', flushDeletes)
+
+    return () => {
+      window.removeEventListener('beforeunload', flushDeletes)
+      window.removeEventListener('pagehide', flushDeletes)
+      flushDeletes()
+    }
+  }, [])
+
   const requestDelete = (id) => {
-    setPendingIds((prev) => new Set(prev).add(id))
+    pendingRef.current.add(id)
+    setPendingIds(new Set(pendingRef.current))
+
     toast(`${label} deleted`, {
       actionLabel: 'Undo',
       onAction: () => clearPending(id),
       onExpire: () => {
-        remove(id)
-        clearPending(id)
+        if (pendingRef.current.has(id)) {
+          removeRef.current(id)
+          clearPending(id)
+        }
       },
     })
   }

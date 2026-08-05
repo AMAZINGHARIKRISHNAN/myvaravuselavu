@@ -26,7 +26,7 @@ export default function Login() {
   }
 
   return (
-    <div className="relative min-h-svh flex items-center justify-center overflow-hidden bg-gray-50 px-4 dark:bg-neutral-950">
+    <div className="relative min-h-svh flex items-center justify-center overflow-hidden bg-gray-900 px-4 dark:bg-neutral-950">
       <div className="pointer-events-none absolute -top-32 -left-24 h-72 w-72 rounded-full bg-indigo-400/30 blur-3xl dark:bg-indigo-500/20" />
       <div className="pointer-events-none absolute -bottom-32 -right-24 h-72 w-72 rounded-full bg-violet-400/30 blur-3xl dark:bg-violet-500/20" />
 
@@ -39,9 +39,7 @@ export default function Login() {
         className="relative w-full max-w-sm card p-8 space-y-5"
       >
         <div className="text-center space-y-1">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-600 text-2xl font-bold text-white dark:bg-indigo-500">
-            ¥
-          </div>
+          <img src="/logo.svg" alt="MyVaravuSelavu logo" className="mx-auto mb-3 h-14 w-14" />
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">MyVaravuSelavu</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">Sign in to your tracker</p>
         </div>

@@ -3,21 +3,26 @@ import { useCollectionWriters } from '../../hooks/useCollectionWriters'
 import { useSettings } from '../../hooks/useSettings'
 import { useToast } from '../../context/ToastContext'
 import { toDateInputValue, parseDateInput } from '../../lib/format'
+import { countryForAccount } from '../../lib/money'
 import { celebrate } from '../../lib/celebrate'
 import BottomSheet from '../ui/BottomSheet'
 
-export default function IncomeForm({ onClose, initial }) {
+export default function IncomeForm({ onClose, initial, initialDate }) {
   const { add, update } = useCollectionWriters('income')
   const { settings } = useSettings()
   const accounts = settings?.accounts || []
   const { toast } = useToast()
   const [amount, setAmount] = useState(initial?.amount ?? '')
   const [source, setSource] = useState(initial?.source ?? 'Salary')
-  const [account, setAccount] = useState(initial?.account ?? '')
+  // Default to a real account: income with no account named moves no balance at
+  // all, which silently looks like "my salary didn't show up".
+  const [account, setAccount] = useState(
+    initial?.account ?? (settings?.accounts || []).find((a) => a.country === 'JP')?.label ?? ''
+  )
   const [gross, setGross] = useState(initial?.gross ?? '')
   const [net, setNet] = useState(initial?.net ?? '')
   const [note, setNote] = useState(initial?.note ?? '')
-  const [date, setDate] = useState(toDateInputValue(initial?.date))
+  const [date, setDate] = useState(toDateInputValue(initial?.date ?? initialDate))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -37,6 +42,9 @@ export default function IncomeForm({ onClose, initial }) {
         net: net ? parseFloat(net) : null,
         note,
         account: account || null,
+        // Which money this is: an Indian account receives rupees, everything
+        // else yen. Without it every total would have to guess.
+        country: countryForAccount(settings?.accounts, account),
         date: parseDateInput(date),
       }
       if (initial?.id) {
@@ -79,19 +87,25 @@ export default function IncomeForm({ onClose, initial }) {
         <Field label="Date">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input" />
         </Field>
-        {accounts.length > 0 && (
-          <Field label="Deposited to (for balances)">
-            <select value={account} onChange={(e) => setAccount(e.target.value)} className="input">
-              <option value="">— none —</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.label}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
+        <Field label="Deposited to (for balances)">
+          <select value={account} onChange={(e) => setAccount(e.target.value)} className="input">
+            <option value="">— none —</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.label}>
+                {a.label}
+              </option>
+            ))}
+            {/* Money handed to you in notes — adds to your counted cash. */}
+            <option value="Cash">💵 Cash (in hand)</option>
+          </select>
+        </Field>
       </div>
+      {!account && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+          With no account picked this counts as income but moves no balance — pick where it landed
+          if you want it to show up there.
+        </p>
+      )}
       <Field label="Note">
         <input value={note} onChange={(e) => setNote(e.target.value)} className="input" />
       </Field>

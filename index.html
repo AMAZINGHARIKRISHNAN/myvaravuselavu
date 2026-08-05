@@ -2,11 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f9fafb" />
+    <!-- maximum-scale/user-scalable stop accidental pinch-zoom in the
+         installed (home-screen) app, which is how this app is used. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#111827" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -14,17 +17,146 @@
     <title>MyVaravuSelavu</title>
     <script>
       (function () {
+        var doc = document.documentElement
         var stored = localStorage.getItem('theme')
         var dark = stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
-        if (dark) {
-          document.documentElement.classList.add('dark')
-          var meta = document.querySelector('meta[name="theme-color"]')
-          if (meta) meta.setAttribute('content', '#080b12')
+        if (dark) doc.classList.add('dark')
+
+        // The suit, restored before first paint. Doing this here rather than in
+        // React is what stops a frame of the wrong skin appearing on launch.
+        //
+        // These colours mirror the `hud` blocks in src/lib/skins.js. They are
+        // duplicated on purpose: this runs before any module can load, and a
+        // splash that waits for JS is a splash that shows a blank screen first.
+        var SUITS = {
+          jarvis: ['#3fd0ff', '#57e2ff', '#ffb547', '#03060c'],
+          friday: ['#ff3b3b', '#ff5e5e', '#ff8a3d', '#0c0605'],
+          edith: ['#2f8bff', '#5aa6ff', '#ffc24d', '#050914'],
+          neon: ['#7c3aed', '#a78bfa', '#fb923c', '#07080f'],
+          classic: ['#6366f1', '#a5b4fc', '#818cf8', '#080b12'],
         }
+        var skin = localStorage.getItem('skin')
+        if (!SUITS[skin]) skin = 'classic'
+        doc.dataset.skin = skin
+        if (skin === 'jarvis' || skin === 'friday' || skin === 'edith') doc.dataset.hud = ''
+
+        var c = SUITS[skin]
+        var bg = dark ? c[3] : '#111827'
+        doc.style.setProperty('--boot-core', c[0])
+        doc.style.setProperty('--boot-core2', c[1])
+        doc.style.setProperty('--boot-alt', c[2])
+        doc.style.setProperty('--boot-bg', bg)
+        // Paint the page furniture immediately so there is never a white frame.
+        doc.style.background = bg
+        var meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.setAttribute('content', bg)
       })()
     </script>
+
+    <!-- Splash styles are inline: an external stylesheet is a network round
+         trip, and anything the splash waits for is a frame of blank screen. -->
+    <style>
+      html, body { background: var(--boot-bg, #080b12); }
+      #boot {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: var(--boot-bg, #080b12);
+        transition: opacity 0.35s ease-out;
+      }
+      #boot.gone { opacity: 0; pointer-events: none; }
+      #boot .bt-dial { position: relative; width: 180px; height: 180px; }
+      #boot .bt-dial > i {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        display: block;
+      }
+      /* 72 tick marks from ONE element: a repeating conic gradient, ring-masked.
+         Cheaper than 72 nodes and it composites on the GPU. */
+      #boot .bt-ticks {
+        background: repeating-conic-gradient(
+          var(--boot-core) 0deg 0.8deg, transparent 0.8deg 5deg
+        );
+        -webkit-mask: radial-gradient(circle, transparent 72px, #000 73px, #000 82px, transparent 83px);
+        mask: radial-gradient(circle, transparent 72px, #000 73px, #000 82px, transparent 83px);
+        opacity: 0.65;
+        animation: bt-spin 26s linear infinite;
+      }
+      /* Four thick arcs with gaps. */
+      #boot .bt-seg {
+        background: repeating-conic-gradient(
+          var(--boot-core) 0deg 62deg, transparent 62deg 90deg
+        );
+        -webkit-mask: radial-gradient(circle, transparent 56px, #000 57px, #000 67px, transparent 68px);
+        mask: radial-gradient(circle, transparent 56px, #000 57px, #000 67px, transparent 68px);
+        opacity: 0.3;
+        animation: bt-spin 9s linear infinite;
+      }
+      /* The sweep, in the identity's second accent — gold on JARVIS. */
+      #boot .bt-sweep {
+        background: conic-gradient(from 0deg, transparent 0 66%, var(--boot-alt) 92%, #fff 100%);
+        -webkit-mask: radial-gradient(circle, transparent 56px, #000 57px, #000 67px, transparent 68px);
+        mask: radial-gradient(circle, transparent 56px, #000 57px, #000 67px, transparent 68px);
+        animation: bt-spin 1.7s linear infinite;
+      }
+      #boot .bt-fine {
+        border: 1px dashed var(--boot-core);
+        opacity: 0.35;
+        inset: 44px !important;
+        animation: bt-spin-r 14s linear infinite;
+      }
+      /* Core: the reactor's triangular face. */
+      #boot .bt-core {
+        inset: 62px !important;
+        background: radial-gradient(circle, #fff 0%, var(--boot-core2) 45%, transparent 72%);
+        animation: bt-pulse 2.6s ease-in-out infinite;
+      }
+      #boot .bt-tri {
+        inset: 68px !important;
+        border-radius: 0 !important;
+        background: var(--boot-core2);
+        -webkit-clip-path: polygon(50% 100%, 0 22%, 100% 22%);
+        clip-path: polygon(50% 100%, 0 22%, 100% 22%);
+        opacity: 0.9;
+      }
+      #boot .bt-name {
+        margin-top: 26px;
+        font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.42em;
+        text-transform: uppercase;
+        color: var(--boot-core2);
+        opacity: 0.85;
+      }
+      @keyframes bt-spin { to { transform: rotate(360deg); } }
+      @keyframes bt-spin-r { to { transform: rotate(-360deg); } }
+      @keyframes bt-pulse {
+        0%, 100% { opacity: 0.85; transform: scale(1); }
+        50% { opacity: 0.45; transform: scale(1.08); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot .bt-dial > i { animation: none !important; }
+      }
+    </style>
   </head>
   <body>
+    <!-- Painted on the very first frame, before a single byte of JS runs.
+         main.jsx clears it once React has mounted. -->
+    <div id="boot">
+      <div class="bt-dial">
+        <i class="bt-ticks"></i>
+        <i class="bt-seg"></i>
+        <i class="bt-sweep"></i>
+        <i class="bt-fine"></i>
+        <i class="bt-core"></i>
+        <i class="bt-tri"></i>
+      </div>
+      <p class="bt-name">MyVaravuSelavu</p>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -1,9 +1,11 @@
+@import "@fontsource-variable/inter";
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Blue-black dark palette (fintech-dashboard look): every dark: class in the
    app draws from these, so this one block retints the whole dark theme. */
 @theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --color-neutral-950: #080b12;
   --color-neutral-900: #0f1420;
   --color-neutral-800: #1a2130;
@@ -18,15 +20,36 @@ html {
 
 body {
   margin: 0;
-  font-feature-settings: "ss01" 1;
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   /* App-like feel when launched from the home screen: no rubber-band page
      bounce, no grey tap flash on buttons */
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
+  /* Kill double-tap-to-zoom everywhere (a fast second tap on any button
+     used to zoom the page). Scrolling and JS swipe gestures still work. */
+  touch-action: manipulation;
 }
 
 #root {
   min-height: 100svh;
+}
+
+/* iOS date/time inputs: they have a stubborn intrinsic min-width and a
+   centered value, so side-by-side From/To fields overflow their grid cells
+   and overlap. Flatten them into normal text-field behavior everywhere. */
+input[type='date'],
+input[type='time'],
+input[type='month'] {
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+input[type='date']::-webkit-date-and-time-value,
+input[type='time']::-webkit-date-and-time-value {
+  text-align: left;
 }
 
 /* Visible focus for keyboard users without affecting touch/mouse taps */
@@ -56,6 +79,23 @@ select:focus-visible,
 
 ::selection {
   background: theme(colors.indigo.200);
+}
+
+/* Slim, unobtrusive scrollbars on desktop; mobile overlays its own. */
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 8px;
+    background-color: rgb(107 114 128 / 0.45);
+    background-clip: content-box;
+  }
 }
 
 @keyframes toast-in {
@@ -145,20 +185,39 @@ select:focus-visible,
 
 @layer components {
   .input {
-    @apply w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:ring-indigo-400;
+    /* text-base (16px) on phones is NOT cosmetic: any focused input below
+       16px makes iOS Safari auto-zoom the whole page. Desktop gets the
+       compact 14px back via lg:. */
+    border-radius: var(--radius-input, 0.75rem);
+    @apply w-full min-w-0 border border-gray-300 bg-white px-3 py-2 text-base lg:text-sm text-gray-900 placeholder-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:ring-indigo-400;
   }
 
   .card {
-    @apply rounded-2xl border border-gray-200/80 bg-white shadow-sm transition-colors dark:border-white/5 dark:bg-neutral-900 dark:shadow-[0_8px_30px_rgba(0,0,0,0.35)];
+    border-radius: var(--radius-card, 1rem);
+    transition-duration: var(--skin-dur, 150ms);
+    @apply border border-gray-300/80 bg-white shadow-[0_1px_3px_rgb(0_0_0/0.07),0_4px_16px_rgb(0_0_0/0.08)] transition-colors dark:border-white/5 dark:bg-neutral-900 dark:shadow-[0_8px_30px_rgba(0,0,0,0.35)];
   }
 
   /* One solid accent; the brand gradient is reserved for the hero card alone. */
   .btn-primary {
-    @apply rounded-xl bg-indigo-600 text-white font-medium transition-all duration-150 hover:bg-indigo-500 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100 dark:bg-indigo-500 dark:hover:bg-indigo-400;
+    border-radius: var(--radius-btn, 0.75rem);
+    transition-duration: var(--skin-dur, 150ms);
+    @apply bg-indigo-600 text-white font-medium shadow-lg shadow-indigo-600/25 transition-all duration-150 hover:bg-indigo-500 active:scale-[0.97] disabled:opacity-40 disabled:shadow-none disabled:active:scale-100 dark:bg-indigo-500 dark:shadow-indigo-500/20 dark:hover:bg-indigo-400;
   }
 
   .btn-ghost {
-    @apply rounded-xl border border-gray-200 bg-white text-gray-700 font-medium transition-all duration-150 hover:border-gray-300 active:scale-[0.97] dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200 dark:hover:border-neutral-600;
+    border-radius: var(--radius-btn, 0.75rem);
+    @apply border border-gray-300 bg-white text-gray-700 font-medium shadow-sm transition-all duration-150 hover:border-gray-400 hover:bg-gray-50 active:scale-[0.97] active:bg-gray-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-200 dark:shadow-none dark:hover:border-neutral-600 dark:hover:bg-neutral-900 dark:active:bg-neutral-800;
+  }
+
+  /* A strip you swipe, not a pane you scroll: the bar adds nothing and eats a
+     row of vertical space under the content. Content still scrolls. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 
   /* Tinted circle behind a chrome icon — the visual anchor for rows & sections. */
@@ -166,4 +225,829 @@ select:focus-visible,
     @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400;
   }
 
+}
+
+/* ============================================================================
+   SKINS — two suits, both meant to be lived in.
+
+   A skin is a block of custom properties, not a fork of the app. Every accent
+   here is an `indigo` utility and Tailwind v4 compiles those to
+   var(--color-indigo-*); every p-*, gap-* and m-* is a multiple of --spacing.
+   Retint and retune those and the whole app follows, with no component edits.
+   Radius, motion and surface treatment ride along the same way.
+   ========================================================================= */
+
+[data-skin='classic'] {
+  --radius-card: 1rem;
+  --radius-btn: 0.75rem;
+  --radius-input: 0.75rem;
+  --skin-dur: 150ms;
+  --skin-press: 0.97;
+}
+
+/* ---- Neon Deck ---------------------------------------------------------
+   The dashboard look: a deep canvas, cards that read as lit panels, gradient
+   accents running violet → fuchsia → orange, and light spilling from anything
+   that matters. Built to be worn in dark mode, but it holds up in light. */
+[data-skin='neon'] {
+  --color-indigo-50: #f5f3ff;
+  --color-indigo-100: #ede9fe;
+  --color-indigo-200: #ddd6fe;
+  --color-indigo-300: #c4b5fd;
+  --color-indigo-400: #a78bfa;
+  --color-indigo-500: #8b5cf6;
+  --color-indigo-600: #7c3aed;
+  --color-indigo-700: #6d28d9;
+  --color-indigo-800: #5b21b6;
+  --color-indigo-900: #4c1d95;
+  --color-indigo-950: #2e1065;
+
+  /* A colder, deeper canvas than Classic — the panels have to float on it. */
+  --color-neutral-950: #07080f;
+  --color-neutral-900: #10121e;
+  --color-neutral-800: #191d2e;
+  --color-neutral-700: #272c42;
+
+  --radius-card: 1.375rem;
+  --radius-btn: 1rem;
+  --radius-input: 0.875rem;
+  --spacing: 0.266rem; /* roomier: the references breathe */
+  --skin-dur: 200ms;
+  --skin-press: 0.96;
+
+  --neon-a: #7c3aed;
+  --neon-b: #d946ef;
+  --neon-c: #fb923c;
+  --neon-glow: rgba(124, 58, 237, 0.28);
+}
+
+/* Panels, not sheets of paper: a top-edge highlight where the light hits, and
+   a coloured bloom underneath instead of a grey drop shadow. */
+[data-skin='neon'] .card {
+  border-color: rgba(255, 255, 255, 0.07);
+  background-image: linear-gradient(160deg, rgba(255, 255, 255, 0.05), transparent 42%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 18px 40px -24px var(--neon-glow);
+}
+.dark [data-skin='neon'] .card,
+[data-skin='neon'] .card {
+  transition-duration: var(--skin-dur);
+}
+
+[data-skin='neon'] .btn-primary {
+  background-image: linear-gradient(120deg, var(--neon-a) 0%, var(--neon-b) 65%, var(--neon-c) 140%);
+  box-shadow: 0 10px 28px -8px var(--neon-glow);
+}
+
+/* The icon tiles are the signature of every reference: a small gradient square
+   glowing beside each row, not a flat pastel circle. */
+[data-skin='neon'] .icon-tile {
+  border-radius: 0.875rem;
+  color: #fff;
+  background-image: linear-gradient(135deg, var(--neon-a), var(--neon-b));
+  box-shadow: 0 6px 16px -6px var(--neon-glow);
+}
+
+[data-skin='neon'] .input {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Money figures carry the weight in these layouts — the number is the design. */
+[data-skin='neon'] .tabular-nums {
+  letter-spacing: -0.015em;
+}
+
+/* Section headings sit quieter and wider, so the numbers stay loudest. */
+[data-skin='neon'] h1,
+[data-skin='neon'] h2 {
+  letter-spacing: 0.01em;
+}
+
+/* A slow violet bloom behind everything, under the content, never tappable. */
+[data-skin='neon'] body::after {
+  content: '';
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.6;
+  background: radial-gradient(40rem 40rem at 12% 8%, var(--neon-glow), transparent 70%),
+    radial-gradient(34rem 34rem at 88% 82%, rgba(217, 70, 239, 0.22), transparent 72%);
+  animation: aurora-a 30s ease-in-out infinite;
+}
+
+[data-skin] #root {
+  position: relative;
+  z-index: 1;
+}
+
+/* Press feel and motion speed, shared by both suits. */
+[data-skin] .btn-primary:active,
+[data-skin] .btn-ghost:active {
+  transform: scale(var(--skin-press, 0.97));
+}
+[data-skin] [class*='animate-'] {
+  animation-duration: calc(var(--skin-dur, 150ms) * 2.2);
+}
+
+/* ============================================================================
+   THE HUD CHASSIS — J.A.R.V.I.S. / F.R.I.D.A.Y. / E.D.I.T.H.
+
+   Three identities, one suit. Everything structural lives under [data-hud]
+   and is written entirely in terms of four custom properties:
+
+     --hud-core   the primary accent
+     --hud-core2  its brighter twin (hot inner edge of a glow)
+     --hud-alt    the secondary accent
+     --hud-panel  the surface panels are cut from
+
+   An identity block below sets those four, retints the `indigo` ramp that
+   every accent in this app already compiles to, and stops. No component knows
+   which suit is on. Adding a fourth is a token block, not a design.
+   ========================================================================= */
+
+[data-hud] {
+  /* HUD panels are squarer than the soft fintech cards: reticle brackets need
+     a corner to bracket. */
+  --radius-card: 0.875rem;
+  --radius-btn: 0.625rem;
+  --radius-input: 0.5rem;
+  --skin-dur: 200ms;
+  --skin-press: 0.96;
+
+  /* Bracket geometry, shared so all four corners can never drift apart. */
+  --hud-arm: 13px;
+  --hud-hair: 1.5px;
+  --hud-inset: 7px;
+
+  /* LINE vs GLOW, kept separate on purpose.
+     The bright identity (--hud-core) is what blooms; it cannot also be what
+     draws the borders and brackets, because on a near-white frosted panel a
+     #3fd0ff hairline sits at 1.6:1 and simply is not there. So the line darkens
+     to a deep shade of the same hue and the glow stays exactly as bright —
+     contrast is bought from the line, never from the light. */
+  --hud-line: var(--color-indigo-700);
+}
+
+[data-hud].dark {
+  /* On black, the bright core IS the readable line. */
+  --hud-line: var(--hud-core);
+}
+
+/* ---- Identity: J.A.R.V.I.S. — arc-reactor cyan, repulsor gold ----------- */
+[data-skin='jarvis'] {
+  --color-indigo-50: #ecfbff;
+  --color-indigo-100: #d3f5ff;
+  --color-indigo-200: #a8ecff;
+  --color-indigo-300: #7ce8ff;
+  --color-indigo-400: #57e2ff;
+  --color-indigo-500: #3fd0ff;
+  /* 600 and below are the SURFACE shades, not the accent: `bg-indigo-600
+     text-white` is the active-pill pattern all over this app, so 600 has to be
+     dark enough to carry white at 4.5:1 — and dark enough to be readable AS
+     text on a frosted light panel. The bright identity lives at 500 and above,
+     and in --hud-core, which is what the glow and the reactor use. */
+  --color-indigo-600: #0a5f7d;
+  --color-indigo-700: #0a4c63;
+  --color-indigo-800: #0b3d4f;
+  --color-indigo-900: #0c3140;
+  --color-indigo-950: #072430;
+
+  --color-neutral-950: #03060c;
+  --color-neutral-900: #081420;
+  --color-neutral-800: #0f2130;
+  --color-neutral-700: #1a3446;
+
+  --hud-core: #3fd0ff;
+  --hud-core2: #57e2ff;
+  --hud-alt: #ffb547;
+  --hud-panel: #081420;
+}
+
+/* ---- Identity: F.R.I.D.A.Y. — crimson, warm amber ----------------------- */
+[data-skin='friday'] {
+  --color-indigo-50: #fff1f1;
+  --color-indigo-100: #ffdfdf;
+  --color-indigo-200: #ffc5c5;
+  --color-indigo-300: #ff9d9d;
+  --color-indigo-400: #ff5e5e;
+  --color-indigo-500: #ff3b3b;
+  --color-indigo-600: #b30d0d; /* surface shade — see the note under jarvis */
+  --color-indigo-700: #940b0b;
+  --color-indigo-800: #7a0f0f;
+  --color-indigo-900: #631212;
+  --color-indigo-950: #3d0606;
+
+  --color-neutral-950: #0c0605;
+  --color-neutral-900: #1a0d0b;
+  --color-neutral-800: #2a1613;
+  --color-neutral-700: #3d211c;
+
+  --hud-core: #ff3b3b;
+  --hud-core2: #ff5e5e;
+  --hud-alt: #ff8a3d;
+  --hud-panel: #1a0d0b;
+}
+
+/* ---- Identity: E.D.I.T.H. — deep blue, gold ----------------------------- */
+[data-skin='edith'] {
+  --color-indigo-50: #eff6ff;
+  --color-indigo-100: #dbeafe;
+  --color-indigo-200: #bfdbfe;
+  --color-indigo-300: #8cc2ff;
+  --color-indigo-400: #5aa6ff;
+  --color-indigo-500: #2f8bff;
+  --color-indigo-600: #1450b8; /* surface shade — see the note under jarvis */
+  --color-indigo-700: #113f92;
+  --color-indigo-800: #123675;
+  --color-indigo-900: #132f5f;
+  --color-indigo-950: #0d1f3f;
+
+  --color-neutral-950: #050914;
+  --color-neutral-900: #0c1426;
+  --color-neutral-800: #152038;
+  --color-neutral-700: #22304f;
+
+  --hud-core: #2f8bff;
+  --hud-core2: #5aa6ff;
+  --hud-alt: #ffc24d;
+  --hud-panel: #0c1426;
+}
+
+/* ---- Panels ------------------------------------------------------------
+   Every `.card` in all 18 routes becomes a HUD panel here, which is the whole
+   reason the brackets are drawn as BACKGROUND LAYERS rather than pseudo-
+   elements: no `position: relative`, no new containing block, so not one of
+   the ~200 existing cards can have an absolutely-positioned child move. Eight
+   gradient slivers, two per corner: ⌐ ¬ L ⌐ */
+/* PANEL-SCOPED LUMINANCE CORRECTION.
+   This app's light mode is a DARK canvas carrying LIGHT surfaces, so the muted
+   greys have two completely different jobs depending on which side of a panel
+   edge they land on — `text-gray-400` is correct on the tab bar and invisible
+   on a frosted panel. Overriding the tokens globally would fix the panel and
+   break the chrome. Declaring them HERE scopes the correction to panel
+   contents: Tailwind v4 resolves `text-gray-500` to var(--color-gray-500) at
+   the use site, so everything inside a panel inherits the corrected value and
+   everything outside one keeps the original. Applies to every card and every
+   bottom sheet across all 18 routes, and needs no component to know about it. */
+[data-hud] :is(.card, .sheet-surface) {
+  --color-gray-400: #4b5563;
+  --color-gray-500: #374151;
+  --color-gray-600: #374151;
+  --color-emerald-600: #047857;
+  --color-red-500: #c81e1e;
+  /* The bright identity is unreadable as text on a light panel; inside one, the
+     accent text steps down to the same deep shade the brackets use. */
+  --color-indigo-300: var(--color-indigo-700);
+  --color-indigo-400: var(--color-indigo-700);
+}
+
+[data-hud] .card {
+  border-color: color-mix(in srgb, var(--hud-line) 45%, transparent);
+  background-color: rgba(255, 255, 255, 0.95); /* light = frosted glass */
+  backdrop-filter: blur(10px) saturate(1.15);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  background-repeat: no-repeat;
+  background-image:
+    /* the sheen where the light hits */
+    linear-gradient(152deg, color-mix(in srgb, var(--hud-core) 13%, transparent), transparent 46%),
+    /* TL */ linear-gradient(var(--hud-line), var(--hud-line)),
+    linear-gradient(var(--hud-line), var(--hud-line)),
+    /* TR */ linear-gradient(var(--hud-line), var(--hud-line)),
+    linear-gradient(var(--hud-line), var(--hud-line)),
+    /* BL */ linear-gradient(var(--hud-line), var(--hud-line)),
+    linear-gradient(var(--hud-line), var(--hud-line)),
+    /* BR */ linear-gradient(var(--hud-line), var(--hud-line)),
+    linear-gradient(var(--hud-line), var(--hud-line));
+  background-size:
+    auto,
+    var(--hud-arm) var(--hud-hair), var(--hud-hair) var(--hud-arm),
+    var(--hud-arm) var(--hud-hair), var(--hud-hair) var(--hud-arm),
+    var(--hud-arm) var(--hud-hair), var(--hud-hair) var(--hud-arm),
+    var(--hud-arm) var(--hud-hair), var(--hud-hair) var(--hud-arm);
+  background-position:
+    0 0,
+    var(--hud-inset) var(--hud-inset), var(--hud-inset) var(--hud-inset),
+    calc(100% - var(--hud-inset)) var(--hud-inset), calc(100% - var(--hud-inset)) var(--hud-inset),
+    var(--hud-inset) calc(100% - var(--hud-inset)), var(--hud-inset) calc(100% - var(--hud-inset)),
+    calc(100% - var(--hud-inset)) calc(100% - var(--hud-inset)),
+    calc(100% - var(--hud-inset)) calc(100% - var(--hud-inset));
+  box-shadow:
+    /* Severity stripe. Transparent unless a row opts in with data-tone, so it
+       costs the other ~200 cards in the app nothing. */
+    inset 3px 0 0 var(--hud-stripe, transparent),
+    0 0 0 1px color-mix(in srgb, var(--hud-core) 12%, transparent) inset,
+    0 14px 38px -24px color-mix(in srgb, var(--hud-core) 70%, transparent);
+}
+
+/* ---- List rows: money in, money out, money moved ------------------------
+   Encoding direction in FORM as well as in the sign and colour of the number,
+   so a long History scroll can be read down the left edge without parsing a
+   single figure. Any route with a list opts in by adding data-tone. */
+[data-hud] .card[data-tone='in'] { --hud-stripe: var(--color-emerald-600); }
+[data-hud] .card[data-tone='out'] { --hud-stripe: var(--hud-line); }
+[data-hud] .card[data-tone='move'] { --hud-stripe: color-mix(in srgb, var(--color-gray-500) 60%, transparent); }
+[data-hud].dark .card[data-tone='in'] { --hud-stripe: #34d399; }
+
+/* Dark is the primary HUD: the panel is a lit sheet of glass over black. */
+[data-hud].dark .card {
+  background-color: color-mix(in srgb, var(--hud-panel) 68%, transparent);
+}
+
+[data-hud].dark :is(.card, .sheet-surface) {
+  /* Tailwind's own values are right again on a dark panel — except gray-500,
+     which lands at 3.9:1 on it and gets lifted a step. */
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #9ca3af;
+  --color-gray-600: #4b5563;
+  --color-emerald-600: #059669;
+  --color-red-500: #ef4444;
+  --color-indigo-300: #7ce8ff;
+  --color-indigo-400: #57e2ff;
+}
+/* …and the accent steps back up per identity, since the values above are
+   jarvis's. Two lines each rather than a third full ramp. */
+[data-hud].dark[data-skin='friday'] :is(.card, .sheet-surface) {
+  --color-indigo-300: #ff9d9d;
+  --color-indigo-400: #ff5e5e;
+}
+[data-hud].dark[data-skin='edith'] :is(.card, .sheet-surface) {
+  --color-indigo-300: #8cc2ff;
+  --color-indigo-400: #5aa6ff;
+}
+
+/* ---- Bottom sheets ------------------------------------------------------
+   Every entry surface in the app (EntryFlow, income, transfers, the assistant)
+   is a BottomSheet, so this one rule dresses the console on all of them. It
+   stays near-opaque rather than frosted: a modal is where the numbers get
+   typed, and legibility outranks translucency at that moment. */
+[data-hud] .sheet-surface {
+  border: 1px solid color-mix(in srgb, var(--hud-line) 40%, transparent);
+  box-shadow: 0 -10px 50px -20px color-mix(in srgb, var(--hud-core) 80%, transparent);
+}
+[data-hud].dark .sheet-surface {
+  background-color: color-mix(in srgb, var(--hud-panel) 96%, #000);
+}
+
+/* Hover blooms in the identity's colour rather than lifting a paper shadow. */
+@media (hover: hover) {
+  [data-hud] .card:hover {
+    border-color: color-mix(in srgb, var(--hud-line) 75%, transparent);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--hud-core) 22%, transparent) inset,
+      0 16px 44px -22px color-mix(in srgb, var(--hud-core) 95%, transparent);
+  }
+}
+
+/* ---- Controls ---------------------------------------------------------- */
+[data-hud] .btn-primary {
+  background-image: linear-gradient(120deg, var(--hud-core) 0%, var(--hud-core2) 100%);
+  /* A repulsor is a LIGHT source, so the button fill is the brightest thing on
+     the screen and a white label sits on it at 1.8:1 (cyan), 3.4:1 (blue) and
+     3.5:1 (crimson) — all three fail. The label goes near-black instead, which
+     is the one fix that costs the glow nothing. */
+  color: #05070c;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hud-core2) 45%, transparent) inset,
+    0 10px 26px -10px color-mix(in srgb, var(--hud-core) 85%, transparent);
+}
+/* A repulsor discharges on press: the glow spikes, it doesn't just shrink. */
+[data-hud] .btn-primary:active {
+  box-shadow: 0 0 0 1px var(--hud-core2) inset,
+    0 0 22px 2px color-mix(in srgb, var(--hud-core) 75%, transparent);
+}
+
+[data-hud] .btn-ghost {
+  border-color: color-mix(in srgb, var(--hud-core) 32%, transparent);
+}
+
+[data-hud] .input {
+  border-color: color-mix(in srgb, var(--hud-core) 26%, transparent);
+}
+
+[data-hud] .icon-tile {
+  border-radius: 0.5rem;
+  background-color: color-mix(in srgb, var(--hud-core) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hud-core) 40%, transparent) inset,
+    0 0 14px -4px color-mix(in srgb, var(--hud-core) 80%, transparent);
+}
+
+/* Readouts, not typography: HUD figures are wide and slightly spaced. */
+[data-hud] .tabular-nums {
+  letter-spacing: 0.01em;
+}
+
+/* ---- The route-level vocabulary ----------------------------------------
+   Four classes, and every route in the app dresses itself by adding one of
+   them. They are deliberately plain outside a HUD — a flat skin sees nothing —
+   which is what lets them be applied everywhere without a conditional. */
+
+/* An instrument readout: a labelled figure in a framed cell. Used for the
+   key metrics at the top of a screen (Charts' year totals, and the same
+   treatment on every other route's headline numbers). */
+[data-hud] .stat-tile {
+  border-radius: 0.5rem;
+  border-color: color-mix(in srgb, var(--hud-line) 40%, transparent);
+  background-color: color-mix(in srgb, var(--hud-core) 7%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--hud-core) 14%, transparent);
+}
+[data-hud] .stat-tile p:first-of-type,
+[data-hud] .stat-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* A status line: the monospace, letterspaced rule that heads a section or a
+   day group. Reads as telemetry rather than as a heading. */
+[data-hud] .status-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+[data-hud] .status-line::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--hud-line) 45%, transparent),
+    transparent
+  );
+}
+
+/* ---- The entry console -------------------------------------------------
+   The keypad is the single most-used surface in this app, so it gets the most
+   deliberate HUD treatment: a framed readout above a grid of console keys that
+   light up under the thumb. */
+[data-hud] .keypad-readout {
+  border: 1px solid color-mix(in srgb, var(--hud-line) 38%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--hud-core) 8%, transparent);
+  box-shadow: inset 0 0 22px -10px var(--hud-core);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+[data-hud] .keypad-key {
+  border-radius: 0.5rem;
+  border-color: color-mix(in srgb, var(--hud-line) 34%, transparent);
+  background-color: color-mix(in srgb, var(--hud-core) 8%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--hud-core) 16%, transparent);
+  font-variant-numeric: tabular-nums;
+  transition: box-shadow 90ms ease-out, background-color 90ms ease-out;
+}
+/* Pressed = powered: the key floods with the identity for as long as it's held. */
+[data-hud] .keypad-key:active {
+  background-color: color-mix(in srgb, var(--hud-core) 26%, transparent);
+  box-shadow: 0 0 20px -4px var(--hud-core), inset 0 0 0 1px var(--hud-core);
+}
+
+[data-hud] .keypad-chip {
+  border-radius: 0.375rem;
+  border-color: color-mix(in srgb, var(--hud-line) 40%, transparent);
+  background-color: color-mix(in srgb, var(--hud-core) 8%, transparent);
+}
+
+/* ---- The ambient layer (rendered by HudLayer) --------------------------- */
+/* Kept as classes rather than inline styles so the mobile scale-down below is
+   a media query and not a resize listener. */
+.hud-grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--hud-core) 30%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--hud-core) 30%, transparent) 1px, transparent 1px);
+  background-size: 46px 46px, 46px 46px;
+  /* Fades out toward the edges so it reads as depth, never as a table. */
+  mask-image: radial-gradient(120% 90% at 50% 20%, #000 0%, transparent 78%);
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 20%, #000 0%, transparent 78%);
+}
+
+.hud-glow {
+  position: fixed;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background:
+    radial-gradient(36rem 36rem at 14% 6%, color-mix(in srgb, var(--hud-core) 26%, transparent), transparent 70%),
+    radial-gradient(30rem 30rem at 86% 88%, color-mix(in srgb, var(--hud-alt) 18%, transparent), transparent 72%);
+  animation: aurora-a 32s ease-in-out infinite;
+}
+
+/* One slow bar of light travelling down the screen. 6% opacity — you should
+   notice it only when you stop looking for it. */
+.hud-scan {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 26vh;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, var(--hud-core2) 6%, transparent) 55%,
+    transparent
+  );
+  animation: hud-scan 7.5s linear infinite;
+}
+
+/* Phones do less work: coarser grid, no scanline, dimmer bloom. The suit has
+   to hold 60fps in a pocket before it has to look good on a monitor. */
+@media (max-width: 640px) {
+  .hud-grid {
+    background-size: 64px 64px, 64px 64px;
+    opacity: 0.35;
+  }
+  .hud-glow {
+    opacity: 0.4;
+    animation: none;
+  }
+  .hud-scan {
+    display: none;
+  }
+}
+
+@keyframes hud-scan {
+  from { transform: translateY(-30vh); }
+  to { transform: translateY(130vh); }
+}
+
+/* The reactor's breath — scale is GPU-cheap, box-shadow is not, so the ring
+   pulses by transform and opacity only. */
+@keyframes hud-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.06); opacity: 0.45; }
+}
+
+@keyframes hud-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes hud-spin-reverse {
+  to { transform: rotate(-360deg); }
+}
+
+/* Indicator dots on the reactor's upper arc, lit in sequence. */
+@keyframes hud-blink {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 1; }
+}
+
+/* ---- Boot screen furniture ---------------------------------------------- */
+
+/* The schematic grid behind the reactor — the blueprint the suit is drawn on.
+   Two grids at different scales so it reads as a technical drawing rather than
+   graph paper, and masked to a soft vignette so it never fights the centre. */
+.hud-boot-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--hud-core) 26%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--hud-core) 26%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--hud-core) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--hud-core) 14%, transparent) 1px, transparent 1px);
+  background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
+  mask-image: radial-gradient(90% 70% at 50% 45%, transparent 18%, #000 55%, transparent 92%);
+  -webkit-mask-image: radial-gradient(90% 70% at 50% 45%, transparent 18%, #000 55%, transparent 92%);
+}
+
+/* Reticle frame around the whole boot screen: four corner brackets, drawn with
+   the same background-gradient trick the panels use so nothing is positioned. */
+.hud-boot-frame {
+  position: absolute;
+  inset: 18px;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(var(--frame), var(--frame)), linear-gradient(var(--frame), var(--frame)),
+    linear-gradient(var(--frame), var(--frame)), linear-gradient(var(--frame), var(--frame)),
+    linear-gradient(var(--frame), var(--frame)), linear-gradient(var(--frame), var(--frame)),
+    linear-gradient(var(--frame), var(--frame)), linear-gradient(var(--frame), var(--frame));
+  background-size:
+    28px 1.5px, 1.5px 28px, 28px 1.5px, 1.5px 28px,
+    28px 1.5px, 1.5px 28px, 28px 1.5px, 1.5px 28px;
+  background-position:
+    0 0, 0 0, 100% 0, 100% 0,
+    0 100%, 0 100%, 100% 100%, 100% 100%;
+  opacity: 0.8;
+}
+
+/* ============================================================================
+   ROUTE ACQUISITION
+
+   Navigating a HUD is a targeting system locking on, not a page turning. The
+   overlay is fixed and pointer-events:none throughout, so it is never an
+   ancestor of page content and can never become the containing block for a
+   `position: fixed` child (which is what would drag the FAB and the entry
+   sheet across the screen mid-transition).
+   ========================================================================= */
+
+.hud-acquire {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+  /* The whole overlay clears itself; nothing lingers to catch a later tap. */
+  animation: hud-acq-clear 0.72s linear both;
+}
+
+@keyframes hud-acq-clear {
+  0%, 62% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+/* ---- Reticle corners: each flies in along its own diagonal and locks ---- */
+.hud-acq-corner {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--hud-core2, var(--hud-core));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--hud-core) 80%, transparent));
+}
+.hud-acq-tl {
+  top: 22px; left: 22px;
+  border-right: 0; border-bottom: 0;
+  animation: hud-acq-tl 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.hud-acq-tr {
+  top: 22px; right: 22px;
+  border-left: 0; border-bottom: 0;
+  animation: hud-acq-tr 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.hud-acq-bl {
+  bottom: 22px; left: 22px;
+  border-right: 0; border-top: 0;
+  animation: hud-acq-bl 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.hud-acq-br {
+  bottom: 22px; right: 22px;
+  border-left: 0; border-top: 0;
+  animation: hud-acq-br 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Overshoot then settle — a servo arriving, not a tween finishing. */
+@keyframes hud-acq-tl {
+  0% { transform: translate(-70px, -70px) scale(1.5); opacity: 0; }
+  55% { transform: translate(6px, 6px) scale(1); opacity: 1; }
+  100% { transform: none; opacity: 0.9; }
+}
+@keyframes hud-acq-tr {
+  0% { transform: translate(70px, -70px) scale(1.5); opacity: 0; }
+  55% { transform: translate(-6px, 6px) scale(1); opacity: 1; }
+  100% { transform: none; opacity: 0.9; }
+}
+@keyframes hud-acq-bl {
+  0% { transform: translate(-70px, 70px) scale(1.5); opacity: 0; }
+  55% { transform: translate(6px, -6px) scale(1); opacity: 1; }
+  100% { transform: none; opacity: 0.9; }
+}
+@keyframes hud-acq-br {
+  0% { transform: translate(70px, 70px) scale(1.5); opacity: 0; }
+  55% { transform: translate(-6px, -6px) scale(1); opacity: 1; }
+  100% { transform: none; opacity: 0.9; }
+}
+
+/* ---- Rails: two lines opening out from the centre line ------------------ */
+.hud-acq-rail {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1.5px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--hud-core2, var(--hud-core)) 20%,
+    var(--hud-alt) 50%,
+    var(--hud-core2, var(--hud-core)) 80%,
+    transparent
+  );
+  transform-origin: center;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--hud-core) 85%, transparent));
+}
+.hud-acq-rail-top { top: 50%; animation: hud-acq-rail-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.hud-acq-rail-bottom { top: 50%; animation: hud-acq-rail-down 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@keyframes hud-acq-rail-up {
+  0% { transform: translateY(0) scaleX(0.05); opacity: 0; }
+  25% { transform: translateY(0) scaleX(1); opacity: 1; }
+  100% { transform: translateY(-42vh) scaleX(1); opacity: 0; }
+}
+@keyframes hud-acq-rail-down {
+  0% { transform: translateY(0) scaleX(0.05); opacity: 0; }
+  25% { transform: translateY(0) scaleX(1); opacity: 1; }
+  100% { transform: translateY(42vh) scaleX(1); opacity: 0; }
+}
+
+/* ---- Grid flash: the schematic showing through for a moment ------------- */
+.hud-acq-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--hud-core) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--hud-core) 40%, transparent) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: radial-gradient(60% 50% at 50% 50%, #000, transparent 75%);
+  -webkit-mask-image: radial-gradient(60% 50% at 50% 50%, #000, transparent 75%);
+  animation: hud-acq-grid 0.55s ease-out both;
+}
+@keyframes hud-acq-grid {
+  0% { opacity: 0; transform: scale(1.08); }
+  20% { opacity: 0.5; }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* ---- Acquisition readout ------------------------------------------------ */
+.hud-acq-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.42em;
+  white-space: nowrap;
+  color: var(--hud-core2, var(--hud-core));
+  text-shadow: 0 0 12px color-mix(in srgb, var(--hud-core) 90%, transparent);
+  animation: hud-acq-label 0.62s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.hud-acq-caret { color: var(--hud-alt); font-style: normal; }
+
+@keyframes hud-acq-label {
+  0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0; letter-spacing: 0.9em; }
+  30% { opacity: 1; }
+  /* Two-frame flicker: a readout settling, not a caption fading in. */
+  38% { opacity: 0.35; }
+  44% { opacity: 1; }
+  70% { transform: translate(-50%, -50%) scale(1); opacity: 1; letter-spacing: 0.42em; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; letter-spacing: 0.42em; }
+}
+
+/* ---- The content itself ------------------------------------------------- */
+
+@keyframes hud-route-in {
+  0% { opacity: 0; transform: translateY(10px); }
+  /* Comes up under the reticle rather than before it. */
+  22% { opacity: 0; }
+  100% { opacity: 1; transform: none; }
+}
+
+[data-hud] .hud-route {
+  animation: hud-route-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Panels cascade in rather than arriving as one slab. Targets the children of
+   the page's own root container, which is where every screen keeps its cards.
+   `:not([class*="fixed"])` matters: a transform on a fixed element re-parents
+   it, which would fling the floating action button across the screen. */
+@keyframes hud-panel-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+[data-hud] .hud-route > * > *:not([class*='fixed']) {
+  animation: hud-panel-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+[data-hud] .hud-route > * > *:nth-child(1) { animation-delay: 0.10s; }
+[data-hud] .hud-route > * > *:nth-child(2) { animation-delay: 0.16s; }
+[data-hud] .hud-route > * > *:nth-child(3) { animation-delay: 0.22s; }
+[data-hud] .hud-route > * > *:nth-child(4) { animation-delay: 0.27s; }
+[data-hud] .hud-route > * > *:nth-child(5) { animation-delay: 0.31s; }
+[data-hud] .hud-route > * > *:nth-child(6) { animation-delay: 0.35s; }
+[data-hud] .hud-route > * > *:nth-child(n + 7) { animation-delay: 0.38s; }
+
+/* Phones keep the reticle and the readout — they are the character of it — but
+   drop the grid flash and the rails, which are the expensive layers. */
+@media (max-width: 640px) {
+  .hud-acq-grid,
+  .hud-acq-rail { display: none; }
+  .hud-acq-corner { width: 30px; height: 30px; }
+}
+
+/* Asked for less motion: no reticle, no flicker, no cascade. Just arrive. */
+@media (prefers-reduced-motion: reduce) {
+  .hud-acquire { display: none; }
+  [data-hud] .hud-route,
+  [data-hud] .hud-route > * > *:not([class*='fixed']) {
+    animation: none;
+  }
+}
+
+/* Everything above is decoration. When less motion is asked for, it stops —
+   the media query at the top of this file zeroes durations, and these two
+   run indefinitely, so they get switched off outright. */
+@media (prefers-reduced-motion: reduce) {
+  .hud-scan { display: none; }
+  .hud-glow { animation: none; }
 }

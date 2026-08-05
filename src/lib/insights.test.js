@@ -52,6 +52,33 @@ describe('buildInsights', () => {
     expect(insights[0].text).toContain('saving more')
   })
 
+  it('reports the top store once it has repeat visits', () => {
+    const insights = buildInsights({
+      expenses: [
+        { category: 'Food', amount: 900, store: 'Lawson' },
+        { category: 'Food', amount: 600, store: 'lawson' },
+      ],
+      prevExpenses: [],
+      savingsRate: NaN,
+      prevSavingsRate: NaN,
+    })
+    const store = insights.find((i) => i.icon === '🏪')
+    // The yen glyph varies by ICU build — assert on the parts that matter.
+    expect(store.text).toContain('lawson took')
+    expect(store.text).toContain('1,500')
+    expect(store.text).toContain('over 2 visits')
+  })
+
+  it('stays quiet about a store visited only once', () => {
+    const insights = buildInsights({
+      expenses: [{ category: 'Food', amount: 900, store: 'Lawson' }],
+      prevExpenses: [],
+      savingsRate: NaN,
+      prevSavingsRate: NaN,
+    })
+    expect(insights.find((i) => i.icon === '🏪')).toBeUndefined()
+  })
+
   it('caps output at 3 insights', () => {
     const insights = buildInsights({
       expenses: [exp('Food', 5000), exp('Coffee', 4000)],

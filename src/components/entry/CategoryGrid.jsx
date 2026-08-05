@@ -13,10 +13,10 @@ export default function CategoryGrid({ value, onSelect }) {
           key={category}
           type="button"
           onClick={() => handleSelect(category)}
-          className={`flex flex-col items-center justify-center gap-1 rounded-2xl py-3.5 text-sm font-medium transition-transform duration-75 active:scale-90 touch-manipulation ${
+          className={`flex flex-col items-center justify-center gap-1 rounded-2xl border py-3.5 text-sm font-medium transition-transform duration-75 active:scale-90 touch-manipulation ${
             value === category
-              ? 'bg-indigo-600 text-white dark:bg-indigo-500'
-              : 'bg-gray-100 text-gray-800 dark:bg-neutral-800 dark:text-gray-100'
+              ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-500 dark:bg-indigo-500'
+              : 'border-gray-300/60 bg-gray-100 text-gray-800 dark:border-transparent dark:bg-neutral-800 dark:text-gray-100'
           }`}
         >
           <span className="text-2xl">{ICONS[category]}</span>

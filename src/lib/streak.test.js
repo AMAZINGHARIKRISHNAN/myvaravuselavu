@@ -1,34 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { computeStreak, daysUntilSalary, lastNDaysTotals, todayTotal } from './streak'
+import { daysUntilSalary, lastNDaysTotals, todayTotal } from './streak'
 
 const now = new Date(2026, 6, 6) // Mon 6 Jul 2026
 const rec = (y, m, d, amount = 100) => ({ date: new Date(y, m, d, 10), amount })
-
-describe('computeStreak', () => {
-  it('returns 0 with no records', () => {
-    expect(computeStreak([], now)).toBe(0)
-  })
-
-  it('counts consecutive days ending today', () => {
-    const records = [rec(2026, 6, 6), rec(2026, 6, 5), rec(2026, 6, 4)]
-    expect(computeStreak(records, now)).toBe(3)
-  })
-
-  it('gives today as grace when not yet logged', () => {
-    const records = [rec(2026, 6, 5), rec(2026, 6, 4)]
-    expect(computeStreak(records, now)).toBe(2)
-  })
-
-  it('breaks on a gap', () => {
-    const records = [rec(2026, 6, 6), rec(2026, 6, 4)]
-    expect(computeStreak(records, now)).toBe(1)
-  })
-
-  it('counts across month boundaries', () => {
-    const records = [rec(2026, 6, 1), rec(2026, 5, 30), rec(2026, 5, 29)]
-    expect(computeStreak(records, new Date(2026, 6, 1))).toBe(3)
-  })
-})
 
 describe('daysUntilSalary', () => {
   it('returns days until this month’s salary day', () => {
