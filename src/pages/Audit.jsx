@@ -10,6 +10,7 @@ import { monthRange } from '../lib/dateRanges'
 import { formatJPY } from '../lib/format'
 import { COMMON_BILLS, billsTotal, billsToLog, monthTotals } from '../lib/audit'
 import Skeleton from '../components/ui/Skeleton'
+import { useToday } from '../hooks/useToday'
 
 // Close the month: total everything, log the bills that vary month to month,
 // then reconcile every account against reality and log whatever's missing —
@@ -24,7 +25,8 @@ export default function Audit() {
 
   // Default to LAST month — you audit a month once it's over.
   const [offset, setOffset] = useState(1)
-  const range = useMemo(() => monthRange(offset), [offset])
+  const today = useToday()
+  const range = useMemo(() => monthRange(offset, today), [offset, today])
   const monthEnd = useMemo(() => range.end || new Date(), [range])
 
   const income = useCollection('income', { dateRange: range })
@@ -114,7 +116,7 @@ export default function Audit() {
           <button
             type="button"
             onClick={() => setOffset((o) => o + 1)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 active:scale-90 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
+            className="flex tap-target h-9 w-9 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 active:scale-90 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
             aria-label="Previous month"
           >
             <ChevronLeft size={16} />
@@ -129,7 +131,7 @@ export default function Audit() {
             type="button"
             onClick={() => setOffset((o) => Math.max(0, o - 1))}
             disabled={offset === 0}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 active:scale-90 disabled:opacity-40 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
+            className="flex tap-target h-9 w-9 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 active:scale-90 disabled:opacity-40 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
             aria-label="Next month"
           >
             <ChevronRight size={16} />

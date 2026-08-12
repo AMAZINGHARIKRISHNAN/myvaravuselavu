@@ -48,7 +48,7 @@ export default function QuickAdd({ onSaved }) {
               type="button"
               onClick={startListening}
               aria-label="Voice quick-add"
-              className={`absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition-all active:scale-90 touch-manipulation ${
+              className={`absolute right-1 top-1/2 flex tap-target h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full transition-all active:scale-90 touch-manipulation ${
                 listening
                   ? 'animate-pulse text-red-500'
                   : 'text-gray-400 hover:text-indigo-600 dark:text-gray-500 dark:hover:text-indigo-400'

@@ -24,6 +24,7 @@ import { buildBackup, downloadBackup, parseBackup, applyBackup } from '../lib/ba
 import Skeleton from '../components/ui/Skeleton'
 import RecurringForm from '../components/entry/RecurringForm'
 import CollapsibleSection from '../components/ui/CollapsibleSection'
+import { useToday } from '../hooks/useToday'
 
 // Reconcile points are stored at midnight of their day, so anything logged that
 // day (a transfer stamped 12:00 AM) still counts towards the balance.
@@ -57,7 +58,8 @@ export default function Settings() {
 
   // Current-month spend per category, shown next to each budget input so
   // setting a cap isn't a guess. Same totals the budget alerts use.
-  const currentRange = useMemo(() => monthRange(0), [])
+  const today = useToday()
+  const currentRange = useMemo(() => monthRange(0, today), [today])
   const monthExpenses = useCollection('expenses', { dateRange: currentRange })
   const spendByCategory = useMemo(() => {
     const totals = {}

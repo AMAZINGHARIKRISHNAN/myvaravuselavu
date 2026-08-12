@@ -63,9 +63,6 @@ function logDraft(parsed) {
   }
 }
 
-const sameDay = (a, b) =>
-  a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-
 const sameMonth = (a, b) => a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
 
 const sum = (rows, pick = (r) => r.amount) => rows.reduce((s, r) => s + (pick(r) || 0), 0)
@@ -317,6 +314,3 @@ function dueSoon(text, { recurring = [], now = new Date() } = {}) {
     to: '/settings',
   }
 }
-
-// Only used for the "today" answer, but exported so tests can pin the rule.
-export { sameDay, sameMonth }

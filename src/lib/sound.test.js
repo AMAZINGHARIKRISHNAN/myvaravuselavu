@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { playSound, soundEnabled, setSoundEnabled, hasSoundProfile } from './sound'
+import { playSound, soundEnabled, setSoundEnabled } from './sound'
 import { SKINS } from './skins'
 
 // Node test env has neither localStorage nor window — back both with fakes, the
@@ -38,7 +38,12 @@ describe('sound settings', () => {
 
 describe('sound profiles', () => {
   it('gives every skin a complete, playable profile', () => {
-    for (const s of SKINS) expect(hasSoundProfile(s.key)).toBe(true)
+    for (const s of SKINS) {
+      expect(s.sound.wave).toBeTruthy()
+      expect(Number.isFinite(s.sound.tap)).toBe(true)
+      expect(s.sound.confirm).toHaveLength(2)
+      expect(s.sound.error).toHaveLength(2)
+    }
   })
 
   it('keeps every skin quieter than a keyboard click', () => {
@@ -60,7 +65,8 @@ describe('sound profiles', () => {
   })
 
   it('falls back to the default skin for an unknown key', () => {
-    expect(hasSoundProfile('mark-99')).toBe(true)
+    // An unknown suit must still make a sound rather than throwing.
+    expect(() => playSound('tap', 'mark-99')).not.toThrow()
   })
 })
 

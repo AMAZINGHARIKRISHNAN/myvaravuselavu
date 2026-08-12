@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useCollectionWriters } from '../../hooks/useCollectionWriters'
 import { useSettings } from '../../hooks/useSettings'
 import { useToast } from '../../context/ToastContext'
-import { toDateTimeInputValue, parseDateTimeInput } from '../../lib/format'
+import { toDateTimeInputValue, parseDateTimeInput, formatByCountry } from '../../lib/format'
 import { celebrate } from '../../lib/celebrate'
 import BottomSheet from '../ui/BottomSheet'
 
@@ -11,7 +11,6 @@ export default function TransferForm({ onClose, initial }) {
   const { add, update } = useCollectionWriters('transfers')
   const { settings } = useSettings()
   const allAccounts = settings?.accounts || []
-  const jpAccounts = allAccounts.filter((a) => a.country === 'JP')
   const { toast } = useToast()
   const [amountSent, setAmountSent] = useState(initial?.amountSent ?? '')
   const [amountReceived, setAmountReceived] = useState(initial?.amountReceived ?? '')
@@ -28,6 +27,12 @@ export default function TransferForm({ onClose, initial }) {
   const [note, setNote] = useState(initial?.note ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // Where each end of this transfer lives. When both are in the same country
+  // no currency changed, so the exchange-rate machinery does not apply.
+  const fromCountry = allAccounts.find((a) => a.label === fromAccount)?.country || null
+  const toCountry = allAccounts.find((a) => a.label === toAccount)?.country || null
+  const sameCurrency = Boolean(fromCountry && toCountry && fromCountry === toCountry)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -147,15 +152,22 @@ export default function TransferForm({ onClose, initial }) {
               className="input"
             />
           </Field>
-          {jpAccounts.length > 0 && (
+          {allAccounts.length > 0 && (
             <Field label="From account (for balances)">
+              {/* EVERY account, not only the Japanese ones. Listing JP alone
+                  meant a rupee-to-rupee self transfer had no selectable source,
+                  so nothing was ever debited and the money appeared to arrive
+                  from thin air — or, with no received figure either, to vanish
+                  entirely. */}
               <select value={fromAccount} onChange={(e) => setFromAccount(e.target.value)} className="input">
                 <option value="">— none —</option>
-                {jpAccounts.map((a) => (
-                  <option key={a.id} value={a.label}>
-                    {a.label}
-                  </option>
-                ))}
+                {allAccounts
+                  .filter((a) => a.label !== toAccount)
+                  .map((a) => (
+                    <option key={a.id} value={a.label}>
+                      {a.country === 'IN' ? '🇮🇳' : '🇯🇵'} {a.label}
+                    </option>
+                  ))}
               </select>
             </Field>
           )}
@@ -190,19 +202,35 @@ export default function TransferForm({ onClose, initial }) {
           more. Say so where the number is typed. */}
       {fromAccount && (
         <p className="text-[11px] text-gray-400 dark:text-gray-500">
-          {fromAccount} goes down by ¥{(parseFloat(amountSent) || 0).toLocaleString()}
+          {/* In the account's OWN currency: a rupee-to-rupee self transfer was
+              labelled in yen, which is the one place a number must not lie. */}
+          {fromAccount} goes down by {formatByCountry(parseFloat(amountSent) || 0, fromCountry)}
           {parseFloat(fee) > 0 &&
-            ` — the ¥${(parseFloat(fee) || 0).toLocaleString()} fee is inside that, not on top`}
+            ` — the ${formatByCountry(parseFloat(fee) || 0, fromCountry)} fee is inside that, not on top`}
           .
         </p>
       )}
       {toAccount && (
         <p className="text-[11px] text-gray-400 dark:text-gray-500">
           {toAccount} goes up by{' '}
-          {allAccounts.find((a) => a.label === toAccount)?.country === 'JP'
-            ? `¥${(parseFloat(amountSent) || 0).toLocaleString()}`
-            : `₹${(parseFloat(amountReceived) || 0).toLocaleString()}`}{' '}
+          {sameCurrency
+            ? `${toCountry === 'IN' ? '₹' : '¥'}${(parseFloat(amountSent) || 0).toLocaleString()}`
+            : toCountry === 'JP'
+              ? `¥${(parseFloat(amountSent) || 0).toLocaleString()}`
+              : `₹${(parseFloat(amountReceived) || 0).toLocaleString()}`}{' '}
           — it's still your money, so it shows as a balance, never as income.
+        </p>
+      )}
+
+      {/* No currency changed, so there is no rate and nothing was "received"
+          separately — what left is what arrived. Saying so stops the received
+          and rate boxes being filled with a number that means nothing. */}
+      {sameCurrency && (
+        <p className="rounded-xl bg-indigo-500/10 px-3 py-2.5 text-[11px] text-indigo-700 dark:text-indigo-300">
+          Same currency both ends — no exchange rate applies, and{' '}
+          {toCountry === 'IN' ? '₹' : '¥'}
+          {(parseFloat(amountSent) || 0).toLocaleString()} arrives exactly. For moves like this
+          the ↔ Move money sheet is quicker: it asks three questions instead of ten.
         </p>
       )}
       <Field label="Note">

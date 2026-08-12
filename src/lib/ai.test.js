@@ -3,7 +3,6 @@ import {
   AI_FEATURES,
   aiEnabled,
   setAiEnabled,
-  anyAiEnabled,
   isAvailable,
   isOnline,
   rateCheck,
@@ -58,14 +57,12 @@ function stubFetch(text, { status = 200, body, reject = false } = {}) {
 describe('feature flags', () => {
   it('is off for every feature by default', () => {
     for (const f of AI_FEATURES) expect(aiEnabled(f.key)).toBe(false)
-    expect(anyAiEnabled()).toBe(false)
   })
 
   it('turns features on independently', () => {
     setAiEnabled('receipts', true)
     expect(aiEnabled('receipts')).toBe(true)
     expect(aiEnabled('assistant')).toBe(false)
-    expect(anyAiEnabled()).toBe(true)
   })
 
   it('refuses a feature name it does not know', () => {

@@ -10,6 +10,7 @@ import { cashPosition } from '../lib/cash'
 import { PREPAID_CARDS, cardBalance } from '../lib/wallet'
 import { CATEGORIES, CATEGORY_ICONS } from '../lib/constants'
 import { typesFor, remaining, isSettled, reconcileOps } from '../lib/reconcile'
+import { countryOf, fundingSources } from '../lib/money'
 import { findUntagged, assignOps } from '../lib/untagged'
 import { useSettings } from '../hooks/useSettings'
 import Skeleton from '../components/ui/Skeleton'
@@ -542,6 +543,17 @@ function UntaggedSection({ income, expenses, accounts, onAssign }) {
     groups.get(key).push(r)
   }
 
+  // This screen exists to repair records, so it must not be able to break one a
+  // different way. When every record in a batch is the same currency, only that
+  // currency's accounts are offered — assigning rupee income to a yen account
+  // would take it off one invisible list and put it on a wrong one. A mixed
+  // batch is left open, and the dashboard's currency check catches any slip.
+  const targetsFor = (list) => {
+    const countries = new Set(list.map((r) => countryOf(r)))
+    if (countries.size !== 1) return [...accounts.map((a) => a.label), 'Cash']
+    return fundingSources(accounts, [...countries][0])
+  }
+
   return (
     <div className="card p-4 space-y-3">
       <button
@@ -578,7 +590,7 @@ function UntaggedSection({ income, expenses, accounts, onAssign }) {
               {list.length > 3 && ` and ${list.length - 3} more`}
             </p>
             <div className="flex flex-wrap gap-2">
-              {[...accounts.map((a) => a.label), 'Cash'].map((label) => (
+              {targetsFor(list).map((label) => (
                 <button
                   key={label}
                   type="button"

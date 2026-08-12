@@ -244,12 +244,12 @@ export default function Notes() {
                       </p>
                     </div>
 
-                    <div className="flex shrink-0">
+                    <div className="flex shrink-0 gap-0.5">
                       <button
                         type="button"
                         onClick={() => patch(note.id, { pinned: !note.pinned })}
                         aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
-                        className={`flex h-9 w-9 items-center justify-center rounded-full transition-all active:scale-90 touch-manipulation ${
+                        className={`flex h-11 w-11 items-center justify-center rounded-full transition-all active:scale-90 touch-manipulation ${
                           note.pinned
                             ? 'text-indigo-500 dark:text-indigo-400'
                             : 'text-gray-400 hover:text-indigo-600 dark:text-gray-500 dark:hover:text-indigo-400'
@@ -261,7 +261,7 @@ export default function Notes() {
                         type="button"
                         onClick={() => startEdit(note)}
                         aria-label="Edit note"
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
                       >
                         <Pencil size={15} />
                       </button>
@@ -269,7 +269,7 @@ export default function Notes() {
                         type="button"
                         onClick={() => undo.requestDelete(note.id)}
                         aria-label="Delete note"
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+                        className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
                       >
                         <Trash2 size={15} />
                       </button>

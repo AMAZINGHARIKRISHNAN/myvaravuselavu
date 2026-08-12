@@ -134,3 +134,37 @@ describe('claimStage', () => {
     expect(claimStage({ ...paid, status: 'approved', receivedVia: null })).toBe('paid')
   })
 })
+
+// 国民の休日: a weekday with a holiday on both sides is a holiday too. Missing
+// it meant the auto-log booked a commute (and a mirrored expense) on a day the
+// office was closed, then offered it to the office as a claim.
+describe('sandwiched-day holidays (Silver Week)', () => {
+  it('2026-09-22 is a holiday, between Respect for the Aged and the Equinox', () => {
+    expect(isJpHoliday(new Date(2026, 8, 21, 9))).toBe(true) // 3rd Monday
+    expect(isJpHoliday(new Date(2026, 8, 22, 9))).toBe(true) // sandwiched
+    expect(isJpHoliday(new Date(2026, 8, 23, 9))).toBe(true) // Autumnal Equinox
+  })
+
+  it('auto-log treats it as a day off', () => {
+    expect(isWorkday(new Date(2026, 8, 22, 9))).toBe(false)
+  })
+
+  it('2032-09-21 is the same pattern', () => {
+    expect(isJpHoliday(new Date(2032, 8, 21, 9))).toBe(true)
+  })
+
+  it('does not invent one when the gap is wider than a day', () => {
+    // 2025: 15 Sept and 23 Sept, nothing in between is a holiday.
+    for (let day = 16; day <= 22; day++) {
+      expect(isJpHoliday(new Date(2025, 8, day, 9))).toBe(false)
+    }
+  })
+
+  it('leaves the substitute-Monday rule alone', () => {
+    // 2024: the Equinox fell on Sunday 22 Sept, so Monday 23rd is a substitute.
+    expect(isJpHoliday(new Date(2024, 8, 22, 9))).toBe(true)
+    expect(isJpHoliday(new Date(2024, 8, 23, 9))).toBe(true)
+    // …and the Monday after Respect for the Aged Day is still a normal workday.
+    expect(isWorkday(new Date(2024, 8, 17, 9))).toBe(true)
+  })
+})

@@ -31,7 +31,6 @@ export const lossKind = (key) =>
 // loss would quietly inflate the profit headline from the wrong direction.
 export const lossAmount = (l) => Math.max(0, (l?.paid || 0) - (l?.recovered || 0))
 
-export const sumLosses = (list = []) => list.reduce((s, l) => s + lossAmount(l), 0)
 
 // Settled vs. still open. A loss you're disputing — a fee you've asked to have
 // waived, a claim you're appealing — shouldn't be written off until it is.

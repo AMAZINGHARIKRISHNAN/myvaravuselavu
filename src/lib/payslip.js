@@ -204,8 +204,11 @@ export function detectSteps(list = [], { minRatio = 0.2, minYen = 1000 } = {}) {
       // A return to where the line sat before the previous change is a spike
       // ending, not a new rate. Without this, a one-off 30,000 in May gets
       // reported twice: once going up, once coming back down.
-      const twoBack = slips[i - 2]?.deductions?.[key]
-      if (twoBack !== undefined && Math.abs(after - twoBack) <= minYen) continue
+      // A line reading 0 two months back counts as a real prior value —
+      // normalizePayslip() fills every key, so 0 means "nothing was deducted",
+      // not "we don't know".
+      const twoBack = i >= 2 ? slips[i - 2].deductions?.[key] ?? 0 : null
+      if (twoBack !== null && Math.abs(after - twoBack) <= minYen) continue
 
       // It only counts as a step if it holds. With no later month to check,
       // report it as provisional rather than silently dropping it.

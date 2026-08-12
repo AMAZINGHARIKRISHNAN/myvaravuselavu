@@ -25,7 +25,7 @@ export default function GlobalSearch() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Search everything"
-        className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-gray-200 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800 dark:text-gray-300"
+        className="flex tap-target h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-gray-200 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800 dark:text-gray-300"
       >
         <Search size={15} aria-hidden="true" />
       </button>

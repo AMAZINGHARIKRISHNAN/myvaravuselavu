@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Send, Pencil, Trash2 } from 'lucide-react'
+import { Send, Pencil, Trash2, ArrowLeftRight } from 'lucide-react'
 import { startOfMonth, differenceInCalendarMonths, format } from 'date-fns'
 import { useCollection } from '../hooks/useCollection'
 import { useSettings } from '../hooks/useSettings'
@@ -9,6 +9,7 @@ import { formatJPY, formatINR, formatPercent, toDate } from '../lib/format'
 import { sumIn } from '../lib/money'
 import { downloadCsv, formatDateForCsv, parseCsvDate } from '../lib/csv'
 import TransferForm from '../components/entry/TransferForm'
+import MoveMoneySheet from '../components/entry/MoveMoneySheet'
 import CsvImportButton from '../components/ui/CsvImportButton'
 import CollapsibleSection from '../components/ui/CollapsibleSection'
 import FloatingActionButton from '../components/ui/FloatingActionButton'
@@ -33,6 +34,7 @@ export default function Transfers() {
   const pageLoading = loading || settingsLoading
 
   const [showForm, setShowForm] = useState(false)
+  const [showMove, setShowMove] = useState(false)
   const [editing, setEditing] = useState(null)
   const [search, setSearch] = useState('')
   const [recipientFilter, setRecipientFilter] = useState('')
@@ -192,6 +194,27 @@ export default function Transfers() {
         />
       )}
 
+      {/* Everything on this page is money leaving the country. Moving your own
+          money between your own places is the neighbouring idea, so the door to
+          it sits here rather than only in the + menu. */}
+      <button
+        type="button"
+        onClick={() => setShowMove(true)}
+        className="card flex w-full items-center gap-3 p-4 text-left transition-transform active:scale-[0.99] touch-manipulation"
+      >
+        <span className="icon-tile">
+          <ArrowLeftRight size={15} aria-hidden="true" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
+            Move money between my own accounts
+          </span>
+          <span className="block text-xs text-gray-500 dark:text-gray-400">
+            Bank to bank, cash in or out, onto a travel card — no rate, no recipient
+          </span>
+        </span>
+      </button>
+
       <div className="card p-4 space-y-3">
         <input
           type="text"
@@ -274,7 +297,7 @@ export default function Transfers() {
                 {t.note && ` · ${t.note}`}
               </p>
             </div>
-            <div className="flex shrink-0">
+            <div className="flex shrink-0 gap-0.5">
               <button
                 type="button"
                 onClick={() => {
@@ -282,7 +305,7 @@ export default function Transfers() {
                   setShowForm(true)
                 }}
                 aria-label="Edit"
-                className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
               >
                 <Pencil size={15} />
               </button>
@@ -290,7 +313,7 @@ export default function Transfers() {
                 type="button"
                 onClick={() => requestDelete(t.id)}
                 aria-label="Delete"
-                className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
               >
                 <Trash2 size={15} />
               </button>
@@ -332,6 +355,7 @@ export default function Transfers() {
       />
 
       {showForm && <TransferForm initial={editing} onClose={() => setShowForm(false)} />}
+      {showMove && <MoveMoneySheet onClose={() => setShowMove(false)} />}
     </div>
   )
 }

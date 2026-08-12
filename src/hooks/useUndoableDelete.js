@@ -5,10 +5,15 @@ export function useUndoableDelete(remove, label) {
   const { toast } = useToast()
   const [pendingIds, setPendingIds] = useState(() => new Set())
   
-  // Keep mutable references for the unmount and beforeunload handlers
+  // Keep mutable references for the unmount and beforeunload handlers.
+  // `removeRef` is refreshed in an effect rather than during render — React
+  // only promises a render's work is real once it has committed, and this ref
+  // is read from teardown handlers that must never call a stale writer.
   const pendingRef = useRef(new Set())
   const removeRef = useRef(remove)
-  removeRef.current = remove
+  useEffect(() => {
+    removeRef.current = remove
+  })
 
   const clearPending = (id) => {
     pendingRef.current.delete(id)

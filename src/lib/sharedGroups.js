@@ -26,9 +26,34 @@ export function groupOwner(group) {
 //   share — what this member's equal split of all spending comes to
 //   net   — paid − share, adjusted by settlements:
 //           net > 0 → the group owes them, net < 0 → they owe the group
+// A group is a CLOSED SYSTEM: every member's net must sum to zero. Money only
+// moves between the people in it, so if the balances do not cancel out, the
+// settle-up figures built on them are wrong.
+//
+// That invariant used to break the moment an entry named someone who is not a
+// current member — a renamed member whose history was not remapped, or one
+// removed from the group after paying for things. Their credit was silently
+// dropped while everyone was still charged a share, so the group quietly lost
+// the whole amount and every suggested transfer was off by it.
+//
+// Such a payer is now kept in the report and marked `external`. They are still
+// owed what they put in, which is the truth, and being visible is what lets it
+// be corrected. They take no SHARE of the spending, because they are not one
+// of the people the household is being split between.
 export function computeGroupReport(members, entries) {
   const stats = {}
-  for (const m of members) stats[m] = { paid: 0, share: 0, net: 0 }
+  const roster = new Set(members)
+  const ensure = (name) => {
+    if (!name) return null
+    if (!stats[name]) {
+      stats[name] = { paid: 0, share: 0, net: 0 }
+      // Flagged only when it IS one — a current member carries no marker, so
+      // the ordinary shape of a row is unchanged.
+      if (!roster.has(name)) stats[name].external = true
+    }
+    return stats[name]
+  }
+  for (const m of members) ensure(m)
   let total = 0
 
   for (const e of entries) {
@@ -36,15 +61,18 @@ export function computeGroupReport(members, entries) {
     if (e.type === 'settlement') {
       // Cash changed hands: the giver's debt shrinks, the receiver's
       // credit shrinks. No new spending happened.
-      if (stats[e.paidBy]) stats[e.paidBy].net += amount
-      if (stats[e.to]) stats[e.to].net -= amount
+      const giver = ensure(e.paidBy)
+      const taker = ensure(e.to)
+      if (giver) giver.net += amount
+      if (taker) taker.net -= amount
       continue
     }
     total += amount
     const share = members.length > 0 ? amount / members.length : 0
-    if (stats[e.paidBy]) {
-      stats[e.paidBy].paid += amount
-      stats[e.paidBy].net += amount
+    const payer = ensure(e.paidBy)
+    if (payer) {
+      payer.paid += amount
+      payer.net += amount
     }
     for (const m of members) {
       stats[m].share += share

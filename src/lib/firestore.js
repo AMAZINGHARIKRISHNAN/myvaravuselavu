@@ -10,7 +10,6 @@ import {
   getDocs,
   query,
   orderBy,
-  where,
   writeBatch,
   Timestamp,
 } from 'firebase/firestore'
@@ -28,12 +27,12 @@ export async function fetchCollectionOnce(uid, name) {
 
 // ---- Generic collection helpers (income, expenses, transfers) ----
 
-export function subscribeToCollection(uid, name, { onData, onError, dateRange } = {}) {
-  const constraints = [orderBy('date', 'desc')]
-  if (dateRange?.start) constraints.push(where('date', '>=', Timestamp.fromDate(dateRange.start)))
-  if (dateRange?.end) constraints.push(where('date', '<=', Timestamp.fromDate(dateRange.end)))
-
-  const q = query(userCollection(uid, name), ...constraints)
+// One live query per collection, newest first. Date windows are applied by the
+// caller against this result (see withinRange) rather than by the server: the
+// app already loads every collection in full somewhere, so a narrower query was
+// never a smaller download — only an extra one.
+export function subscribeToCollection(uid, name, { onData, onError } = {}) {
+  const q = query(userCollection(uid, name), orderBy('date', 'desc'))
   return onSnapshot(
     q,
     (snap) => onData(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
@@ -71,7 +70,20 @@ export function deleteRecord(uid, name, id) {
 // `data` may be a function (ids) => ({...}) to reference the generated id of
 // any other op in the same commit — that's how both sides link to each other
 // before either exists.
+//
+// Firestore commits at most 500 operations at once. Splitting silently would
+// throw away the all-or-nothing guarantee this function exists to provide, so
+// it refuses instead — loudly, and in words a caller can put in front of the
+// user. Callers whose work genuinely divides (a month of commute days, a CSV
+// import) chunk it themselves into commits that each stay whole.
+const BATCH_LIMIT = 500
+
 export async function commitOps(uid, ops) {
+  if (ops.length > BATCH_LIMIT) {
+    throw new Error(
+      `Too many changes to save at once (${ops.length} of a maximum ${BATCH_LIMIT}). Do it in smaller pieces.`
+    )
+  }
   const batch = writeBatch(db)
   const ids = ops.map((o) => o.id ?? (o.op === 'set' ? doc(userCollection(uid, o.name)).id : null))
   ops.forEach((o, i) => {

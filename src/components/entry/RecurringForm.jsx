@@ -3,6 +3,7 @@ import { useRecurring } from '../../hooks/useRecurring'
 import { useSettings } from '../../hooks/useSettings'
 import { useToast } from '../../context/ToastContext'
 import { CATEGORIES, NON_ACCOUNT_PAYMENT_METHODS } from '../../lib/constants'
+import { sourceCountry } from '../../lib/currencyAudit'
 import BottomSheet from '../ui/BottomSheet'
 
 export default function RecurringForm({ onClose, initial }) {
@@ -32,6 +33,14 @@ export default function RecurringForm({ onClose, initial }) {
     ...NON_ACCOUNT_PAYMENT_METHODS,
   ]
 
+  // Method and country used to be two free choices side by side, so a bill
+  // could be saved as "Edenred, IN" — and unlike a one-off mistake this one
+  // reposts itself every month, generating a rupee expense on a yen card
+  // forever. A method that can only hold one currency now decides it, and the
+  // dropdown disappears rather than offering a choice that is already made.
+  const fixedCountry = sourceCountry(paymentMethod, settings?.accounts ?? [])
+  const effectiveCountry = fixedCountry || country
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!amount || !label.trim()) {
@@ -50,7 +59,7 @@ export default function RecurringForm({ onClose, initial }) {
         autoPost,
         lastGeneratedMonth: initial?.lastGeneratedMonth ?? null,
         ...(kind === 'expense'
-          ? { category, paymentMethod, country, store: store.trim() }
+          ? { category, paymentMethod, country: effectiveCountry, store: store.trim() }
           : kind === 'transfer'
             ? { recipient, method, fee: parseFloat(fee) || 0 }
             : { source }),
@@ -154,12 +163,22 @@ export default function RecurringForm({ onClose, initial }) {
                 ))}
               </select>
             </Field>
-            <Field label="Country">
-              <select value={country} onChange={(e) => setCountry(e.target.value)} className="input">
-                <option value="JP">JP</option>
-                <option value="IN">IN</option>
-              </select>
-            </Field>
+            {/* Only Cash can be either — every other method names its own
+                currency, so asking would just be a way to get it wrong. */}
+            {fixedCountry ? (
+              <Field label="Country">
+                <p className="flex min-h-11 items-center px-1 text-xs text-gray-500 dark:text-gray-400">
+                  {fixedCountry} — set by {paymentMethod}
+                </p>
+              </Field>
+            ) : (
+              <Field label="Country">
+                <select value={country} onChange={(e) => setCountry(e.target.value)} className="input">
+                  <option value="JP">JP</option>
+                  <option value="IN">IN</option>
+                </select>
+              </Field>
+            )}
           </div>
         )}
 

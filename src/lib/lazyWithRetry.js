@@ -7,10 +7,23 @@ import { lazy } from 'react'
 // becomes "Something went wrong" for what is really just a stale page.
 //
 // Reloading fixes it, so do that instead of showing an error: one reload picks
-// up the new index and the new chunk names. The flag makes it exactly one — if
-// the very next attempt fails too, it's a real failure and the error boundary
-// should see it.
-const RELOAD_FLAG = 'vs_chunk_reloaded'
+// up the new index and the new chunk names. If the very next attempt fails too,
+// it's a real failure (a bad deploy, a chunk that genuinely 404s) and the error
+// boundary should see it rather than the page reloading forever.
+//
+// What stops the loop is a TIMESTAMP, not a boolean. A boolean needs someone to
+// clear it, and the obvious place to do that — "the app booted, so let the next
+// deploy reload too" — runs on every load, including the one the reload just
+// caused. That cleared the guard before it could ever be read, so a missing
+// chunk reloaded endlessly. A timestamp needs nobody: a chunk that fails again
+// straight after a reload is inside the window and gives up, while a second
+// deploy an hour later is outside it and gets its own reload.
+const RELOAD_FLAG = 'vs_chunk_reloaded_at'
+
+// Long enough to cover the reload plus the router re-requesting the same lazy
+// route (a second or two); short enough that it never blocks a genuine later
+// deploy in the same session.
+const RETRY_WINDOW_MS = 15_000
 
 // Browsers word a missing chunk differently; this catches all of them.
 export function isStaleChunkError(error) {
@@ -21,32 +34,39 @@ export function isStaleChunkError(error) {
 }
 
 // Safari in private mode can throw on storage access, and a reload that can't
-// remember it happened would loop — so failing to read means "don't retry".
-const flag = {
-  get() {
-    try {
-      return sessionStorage.getItem(RELOAD_FLAG)
-    } catch {
-      return '1'
-    }
-  },
-  set(value) {
-    try {
-      if (value) sessionStorage.setItem(RELOAD_FLAG, '1')
-      else sessionStorage.removeItem(RELOAD_FLAG)
-    } catch {
-      /* storage unavailable — one attempt is all we get */
-    }
-  },
+// remember it happened would loop — so failing to read means "already tried".
+export function reloadedRecently(now = Date.now()) {
+  try {
+    const at = parseInt(sessionStorage.getItem(RELOAD_FLAG) || '', 10)
+    if (!Number.isFinite(at)) return false
+    // A clock that jumped backwards must not park the guard on forever.
+    return at <= now && now - at < RETRY_WINDOW_MS
+  } catch {
+    return true
+  }
 }
 
-// Called once the app has booted and stayed up: the next deploy during this
-// session deserves its own reload.
-export const clearReloadFlag = () => flag.set(false)
+function markReloaded(now = Date.now()) {
+  try {
+    sessionStorage.setItem(RELOAD_FLAG, String(now))
+  } catch {
+    /* storage unavailable — reloadedRecently() fails closed, so one attempt */
+  }
+}
+
+// Called once a lazy chunk has actually loaded: chunks demonstrably work, so
+// nothing is left to guard against and the next deploy starts from scratch.
+export const clearReloadFlag = () => {
+  try {
+    sessionStorage.removeItem(RELOAD_FLAG)
+  } catch {
+    /* nothing to clear */
+  }
+}
 
 export function reloadForNewBuild() {
-  if (flag.get()) return false
-  flag.set(true)
+  if (reloadedRecently()) return false
+  markReloaded()
   window.location.reload()
   return true
 }

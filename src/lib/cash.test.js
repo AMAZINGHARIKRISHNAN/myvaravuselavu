@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { countTotal, pieceCount, latestCounts, cashPosition, recountDrift, denomRows, cashLedger } from './cash'
+import { parseDateInput } from './format'
 
 describe('countTotal / pieceCount', () => {
   it('multiplies each denomination by its quantity', () => {
@@ -223,5 +224,49 @@ describe('cashLedger', () => {
     const pos = cashPosition(data)
     const ledgerNet = cashLedger(data).reduce((s, r) => s + r.amount, 0)
     expect(ledgerNet).toBe(pos.expected - pos.counted)
+  })
+})
+
+// Same cutoff bug as cardBalance: a count and an expense both backdated to one
+// day share a timestamp, and the expense used to vanish — reporting more cash
+// on hand than was actually in the wallet.
+describe('cashPosition: a count does not swallow records dated the same day', () => {
+  const noon = (iso) => parseDateInput(iso)
+
+  it('counts a cash expense backdated to the count day', () => {
+    const pos = cashPosition({
+      counts: [{ id: 'c', stash: 'Wallet', denoms: { 1000: 5 }, date: noon('2026-01-10') }],
+      expenses: [{ id: 'e', paymentMethod: 'Cash', amount: 1000, country: 'JP', date: noon('2026-01-10') }],
+    })
+    expect(pos.expected).toBe(4000)
+  })
+
+  it('still ignores spending dated before the count day', () => {
+    const pos = cashPosition({
+      counts: [{ id: 'c', stash: 'Wallet', denoms: { 1000: 5 }, date: noon('2026-01-10') }],
+      expenses: [{ id: 'e', paymentMethod: 'Cash', amount: 1000, country: 'JP', date: noon('2026-01-09') }],
+    })
+    expect(pos.expected).toBe(5000)
+  })
+
+  it('a count taken this evening still ignores this morning’s spending', () => {
+    const pos = cashPosition({
+      counts: [{ id: 'c', stash: 'Wallet', denoms: { 1000: 5 }, date: new Date(2026, 0, 10, 20, 0) }],
+      expenses: [
+        { id: 'e', paymentMethod: 'Cash', amount: 1000, country: 'JP', date: new Date(2026, 0, 10, 10, 30) },
+      ],
+    })
+    expect(pos.expected).toBe(5000)
+  })
+
+  it('the ledger still explains the drift exactly after the cutoff change', () => {
+    const data = {
+      counts: [{ id: 'c', stash: 'Wallet', denoms: { 1000: 5 }, date: noon('2026-01-10') }],
+      expenses: [{ id: 'e', paymentMethod: 'Cash', amount: 1000, country: 'JP', date: noon('2026-01-10') }],
+      withdrawals: [{ id: 'w', account: 'MUFJ', amount: 2000, country: 'JP', date: noon('2026-01-10') }],
+    }
+    const pos = cashPosition(data)
+    const net = cashLedger(data).reduce((s, r) => s + r.amount, 0)
+    expect(net).toBe(pos.expected - pos.counted)
   })
 })

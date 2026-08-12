@@ -27,10 +27,11 @@
 //     returns a half-answer or a fabricated one, because every caller has a
 //     local fallback that is better than a guess.
 
-// gemini-flash-latest for the assistant and receipt vision; the lite variant is
-// reserved for cheap classification if that is ever wanted.
+// gemini-flash-latest, for the one thing that currently calls out: reading a
+// payslip image. A cheaper lite variant was named here for classification work
+// that never arrived — add it back alongside the caller that needs it, rather
+// than leaving a constant nothing reads.
 export const MODEL_FLASH = 'gemini-flash-latest'
-export const MODEL_FLASH_LITE = 'gemini-flash-lite-latest'
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
 
@@ -85,8 +86,6 @@ export function setAiEnabled(feature, on) {
   }
   return on
 }
-
-export const anyAiEnabled = () => AI_FEATURES.some((f) => aiEnabled(f.key))
 
 // ---- Rate guard -------------------------------------------------------------
 //

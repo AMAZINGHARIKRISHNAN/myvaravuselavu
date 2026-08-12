@@ -114,7 +114,7 @@ describe('askJarvis', () => {
     const a = ask('coffee 450 at Starbucks')
     expect(a.intent).toBe('log')
     expect(a.payload.amount).toBe(450)
-    expect(a.payload.category).toBe('Coffee')
+    expect(a.payload.category).toBe('Snacks')
   })
 
   // The trap this ordering exists to avoid: a question about coffee spending

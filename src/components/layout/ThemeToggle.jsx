@@ -40,7 +40,7 @@ export default function ThemeToggle() {
         type="button"
         onClick={toggleTheme}
         aria-label="Toggle theme"
-        className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-gray-200 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800 dark:text-gray-300"
+        className="flex tap-target h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-gray-200 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800 dark:text-gray-300"
       >
         {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
       </button>

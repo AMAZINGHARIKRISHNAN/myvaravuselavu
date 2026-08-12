@@ -91,11 +91,3 @@ export function playSound(kind, skinKey) {
     /* audio hardware busy or blocked — silence is an acceptable outcome */
   }
 }
-
-// Exported for tests: the shape a profile must have for playSound to work.
-export const hasSoundProfile = (skinKey) => {
-  const p = skinMeta(skinKey).sound
-  return Boolean(
-    p && p.wave && Number.isFinite(p.tap) && p.confirm?.length === 2 && p.error?.length === 2
-  )
-}

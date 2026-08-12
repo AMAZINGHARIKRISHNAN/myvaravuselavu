@@ -2,19 +2,21 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
-import { reloadForNewBuild, clearReloadFlag } from './lib/lazyWithRetry'
+import { reloadForNewBuild } from './lib/lazyWithRetry'
 
 // A deploy renames every hashed chunk, so a page left open (or an installed
 // PWA whose service worker just swapped itself in) can ask for a file that no
 // longer exists. Vite reports that as `vite:preloadError`; the honest response
 // is to pick up the new build rather than show an error screen.
+//
+// Deliberately no `load` listener resetting the guard here: `load` fires on the
+// reload this very handler triggers, so clearing the guard there meant a chunk
+// that was genuinely missing reloaded the page forever. lazyWithRetry clears it
+// when a chunk actually loads, and the guard times itself out regardless.
 window.addEventListener('vite:preloadError', (event) => {
   event.preventDefault()
   reloadForNewBuild()
 })
-
-// Booted fine — let the next deploy during this session reload once too.
-window.addEventListener('load', clearReloadFlag)
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

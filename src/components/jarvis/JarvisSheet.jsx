@@ -15,6 +15,7 @@ import { profitEvents, splitGainLoss } from '../../lib/profit'
 import { computeSafeToSpend } from '../../lib/planning'
 import { monthRange } from '../../lib/dateRanges'
 import BottomSheet from '../ui/BottomSheet'
+import { useToday } from '../../hooks/useToday'
 
 const VOICE_KEY = 'vs_jarvis_voice'
 
@@ -41,7 +42,8 @@ export default function JarvisSheet({ onClose, onLog }) {
   const navigate = useNavigate()
   const { settings } = useSettings()
   const { skin } = useTheme()
-  const dateRange = useMemo(() => monthRange(0), [])
+  const today = useToday()
+  const dateRange = useMemo(() => monthRange(0, today), [today])
 
   const monthExpenses = useCollection('expenses', { dateRange })
   const monthIncome = useCollection('income', { dateRange })
@@ -207,7 +209,7 @@ export default function JarvisSheet({ onClose, onLog }) {
           type="button"
           onClick={toggleVoice}
           aria-label={voiceOn ? 'Mute replies' : 'Unmute replies'}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-500/30 text-cyan-600 transition-transform active:scale-90 dark:text-cyan-300"
+          className="flex tap-target h-9 w-9 shrink-0 items-center justify-center rounded-full border border-cyan-500/30 text-cyan-600 transition-transform active:scale-90 dark:text-cyan-300"
         >
           {voiceOn ? <Volume2 size={15} /> : <VolumeX size={15} />}
         </button>

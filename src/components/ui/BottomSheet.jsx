@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import Portal from './Portal'
 
 const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
 const DISMISS_AT = 110 // px of downward drag that closes the sheet
@@ -74,46 +75,52 @@ export default function BottomSheet({ onClose, title, as: Tag = 'div', onSubmit,
   }, [onClose])
 
   return (
-    <div
-      onClick={onClose}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 animate-[fade-in_0.15s_ease-out]"
-    >
-      <Tag
-        ref={panelRef}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onSubmit={onSubmit}
-        onClick={(e) => e.stopPropagation()}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
-        style={{ transform: dragY ? `translateY(${dragY}px)` : undefined }}
-        className={`sheet-surface bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4 max-h-[92svh] overflow-y-auto outline-none dark:bg-neutral-900 dark:border dark:border-white/10 animate-[sheet-up_0.22s_cubic-bezier(0.32,0.72,0,1)] shadow-2xl ${
-          dragY ? '' : 'transition-transform duration-200'
-        }`}
+    // Portalled out of the page: the route transition animates a transform on
+    // the wrapper around page content, and a transformed ancestor would make
+    // this "fixed inset-0" overlay cover the content box rather than the
+    // screen — so the sheet drifted with the scroll instead of covering it.
+    <Portal>
+      <div
+        onClick={onClose}
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 animate-[fade-in_0.15s_ease-out]"
       >
-        <span
-          aria-hidden="true"
-          className="mx-auto -mt-1 block h-1 w-9 rounded-full bg-gray-300 dark:bg-neutral-700 sm:hidden"
-        />
-        {title && (
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 transition-transform active:scale-90 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        {children}
-      </Tag>
-    </div>
+        <Tag
+          ref={panelRef}
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          onSubmit={onSubmit}
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          style={{ transform: dragY ? `translateY(${dragY}px)` : undefined }}
+          className={`sheet-surface bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4 max-h-[92svh] overflow-y-auto outline-none dark:bg-neutral-900 dark:border dark:border-white/10 animate-[sheet-up_0.22s_cubic-bezier(0.32,0.72,0,1)] shadow-2xl ${
+            dragY ? '' : 'transition-transform duration-200'
+          }`}
+        >
+          <span
+            aria-hidden="true"
+            className="mx-auto -mt-1 block h-1 w-9 rounded-full bg-gray-300 dark:bg-neutral-700 sm:hidden"
+          />
+          {title && (
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close"
+                className="flex tap-target h-8 w-8 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 transition-transform active:scale-90 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {children}
+        </Tag>
+      </div>
+    </Portal>
   )
 }

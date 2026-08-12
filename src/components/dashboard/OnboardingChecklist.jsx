@@ -11,7 +11,31 @@ export default function OnboardingChecklist({ settings }) {
 
   if (!settings || dismissed) return null
 
+  // Ordered by how much the app can do once each is answered.
+  //
+  // Accounts come first now, and they were missing entirely: almost everything
+  // worth having here — running balances, the wallet, cash on hand, reconcile,
+  // the "check against your bank" flow — is dead until at least one account
+  // exists with a starting balance. AccountsCard used to nag about it from a
+  // second place instead, which meant the checklist could read "all done" while
+  // the app's centrepiece had never been switched on.
+  const accounts = settings.accounts || []
+  const anchored = accounts.filter(
+    (a) => a.openingBalance !== null && a.openingBalance !== undefined && a.openingBalanceAt
+  )
   const steps = [
+    {
+      label: 'Add your accounts',
+      hint: 'Bank cards you spend from',
+      done: accounts.length > 0,
+      to: '/settings',
+    },
+    {
+      label: "Set each account's current balance",
+      hint: 'From there your logs keep it up to date',
+      done: accounts.length > 0 && anchored.length === accounts.length,
+      to: '/settings',
+    },
     { label: 'Set your salary', done: (settings.salaryAmount || 0) > 0, to: '/settings' },
     { label: 'Set your join date', done: Boolean(settings.joinDate), to: '/transfers' },
     { label: 'Set a PIN (optional)', done: hasPin(), to: '/settings' },
@@ -43,7 +67,7 @@ export default function OnboardingChecklist({ settings }) {
             type="button"
             onClick={() => !s.done && navigate(s.to)}
             disabled={s.done}
-            className="flex w-full items-center justify-between rounded-xl px-1 py-1.5 text-left text-sm transition-transform active:scale-[0.98] disabled:active:scale-100"
+            className="flex min-h-11 w-full items-center justify-between rounded-xl px-1 py-1.5 text-left text-sm transition-transform active:scale-[0.98] disabled:active:scale-100"
           >
             <span
               className={`flex items-center gap-2 ${
@@ -55,7 +79,16 @@ export default function OnboardingChecklist({ settings }) {
               ) : (
                 <Circle size={16} className="shrink-0 text-gray-300 dark:text-neutral-600" aria-hidden="true" />
               )}
-              {s.label}
+              <span className="min-w-0">
+                <span className="block">{s.label}</span>
+                {/* Why it matters, only while it's still outstanding — a
+                    finished step doesn't need to justify itself. */}
+                {s.hint && !s.done && (
+                  <span className="block text-[11px] font-normal text-gray-400 dark:text-gray-500">
+                    {s.hint}
+                  </span>
+                )}
+              </span>
             </span>
             {!s.done && (
               <span className="flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import Portal from './Portal'
 import { Pencil, Trash2 } from 'lucide-react'
 
 // Mail-style swipe actions for list rows: drag right to edit, left to delete.
@@ -81,43 +82,47 @@ export default function SwipeableRow({ onEdit, onDelete, children }) {
 
       {/* Confirmation popup — nothing is removed until "Remove" is tapped. */}
       {confirming && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 animate-[toast-in_0.15s_ease-out]"
-          onClick={() => setConfirming(false)}
-        >
+        // Portalled: a transformed page wrapper would anchor this
+        // full-screen overlay to the content box instead of the screen.
+        <Portal>
           <div
-            role="alertdialog"
-            aria-label="Remove this?"
-            className="w-full max-w-xs space-y-3 rounded-2xl bg-white p-4 shadow-xl dark:bg-neutral-900"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6 animate-[toast-in_0.15s_ease-out]"
+            onClick={() => setConfirming(false)}
           >
-            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              🗑 Shall we remove this?
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              After removing you still get a short Undo chance in the toast below.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirming(false)}
-                className="btn-ghost py-2.5 text-sm"
-              >
-                Keep it
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirming(false)
-                  onDelete()
-                }}
-                className="rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white transition-transform active:scale-95 touch-manipulation"
-              >
-                Remove
-              </button>
+            <div
+              role="alertdialog"
+              aria-label="Remove this?"
+              className="w-full max-w-xs space-y-3 rounded-2xl bg-white p-4 shadow-xl dark:bg-neutral-900"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                🗑 Shall we remove this?
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                After removing you still get a short Undo chance in the toast below.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirming(false)}
+                  className="btn-ghost py-2.5 text-sm"
+                >
+                  Keep it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirming(false)
+                    onDelete()
+                  }}
+                  className="rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white transition-transform active:scale-95 touch-manipulation"
+                >
+                  Remove
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
     </div>
   )

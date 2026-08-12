@@ -371,3 +371,41 @@ describe('speak — gating', () => {
     expect(await speak('   ', 'jarvis', { synth })).toBe(false)
   })
 })
+
+// Chrome/Edge return an empty voice list until `voiceschanged` fires. If that
+// lands after loadVoices() gives up, caching the resulting null left the suit
+// permanently mute even once the voices arrived.
+describe('resolveVoice never caches a miss', () => {
+  it('retries after an empty list and picks up voices that arrive later', async () => {
+    clearVoiceCache()
+    let voices = []
+    const synth = {
+      getVoices: () => voices,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }
+    // First pass: nothing available yet (loadVoices resolves [] on timeout).
+    expect(await resolveVoice('jarvis', { ...synth, getVoices: () => [] })).toBe(null)
+
+    // The engine finishes loading; the very next attempt must find Daniel.
+    voices = [{ name: 'Daniel', lang: 'en-GB', default: true }]
+    const chosen = await resolveVoice('jarvis', synth)
+    expect(chosen?.name).toBe('Daniel')
+  })
+
+  it('still caches a real hit, so getVoices() is not called twice', async () => {
+    clearVoiceCache()
+    let calls = 0
+    const synth = {
+      getVoices: () => {
+        calls += 1
+        return [{ name: 'Daniel', lang: 'en-GB', default: true }]
+      },
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }
+    await resolveVoice('jarvis', synth)
+    await resolveVoice('jarvis', synth)
+    expect(calls).toBe(1)
+  })
+})

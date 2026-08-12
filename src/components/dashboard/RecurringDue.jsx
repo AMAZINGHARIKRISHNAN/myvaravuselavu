@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Bell } from 'lucide-react'
 import { format } from 'date-fns'
 import { useRecurring } from '../../hooks/useRecurring'
@@ -20,7 +20,18 @@ export default function RecurringDue() {
   const now = new Date()
   const monthKey = format(now, 'yyyy-MM')
 
-  const due = data.filter((r) => isDue(r, now, monthKey))
+  // Memoised on the recurring list and the month, not rebuilt every render:
+  // the auto-post effect below watches this, and a fresh array each render
+  // meant it re-ran on every single one.
+  const due = useMemo(
+    () => data.filter((r) => isDue(r, new Date(), monthKey)),
+    [data, monthKey]
+  )
+
+  // Which month `autoPosting` refers to. An installed PWA can sit open across
+  // a month boundary, and a set that only ever grew meant the new month's
+  // items were treated as already posted and never went in.
+  const autoMonth = useRef(monthKey)
 
   // Builds the record for a recurring item and writes it together with the
   // recurring doc's lastGeneratedMonth in a single atomic batch.
@@ -76,6 +87,12 @@ export default function RecurringDue() {
   const manualDue = due.filter((r) => !r.autoPost)
 
   useEffect(() => {
+    // A new month is a clean slate — nothing posted in the last one should
+    // stop this one's copy going in.
+    if (autoMonth.current !== monthKey) {
+      autoMonth.current = monthKey
+      autoPosting.current = new Set()
+    }
     for (const r of due) {
       if (r.autoPost && !autoPosting.current.has(r.id)) {
         autoPosting.current.add(r.id)
@@ -89,7 +106,7 @@ export default function RecurringDue() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [due])
+  }, [due, monthKey])
 
   if (manualDue.length === 0) return null
 

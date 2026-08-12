@@ -17,6 +17,7 @@ import { passProfit, passResult } from './passes'
 import { splitWindfalls, windfallProfit, windfallKind } from './windfall'
 import { splitLosses, lossAmount, lossKind } from './loss'
 import { toDate } from './format'
+import { countryOf } from './money'
 
 // Optional {start, end} window. Every source dates its profit differently, so
 // each one passes the field that says WHEN the money moved.
@@ -235,7 +236,7 @@ export function profitEvents({
 export function splitGainLoss(events = []) {
   const out = { gains: [], losses: [], gained: 0, lost: 0, pendingGain: 0, pendingLoss: 0 }
   for (const e of events) {
-    if (e.country === 'IN') continue
+    if (countryOf(e) === 'IN') continue
     if (e.amount > 0) {
       out.gains.push(e)
       if (e.pending) out.pendingGain += e.amount

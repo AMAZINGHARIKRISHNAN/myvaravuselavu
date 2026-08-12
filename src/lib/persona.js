@@ -86,7 +86,6 @@ export const PERSONAS = {
   },
 }
 
-export const isPersona = (skin) => Boolean(PERSONAS[skin])
 export const personaOf = (skin) => PERSONAS[skin] || PERSONAS.jarvis
 
 // The question this identity asks first, unprompted, on the Dashboard.

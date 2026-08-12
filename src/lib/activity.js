@@ -11,6 +11,7 @@
 // jumps when tapped, so any entry is one tap from the screen that owns it.
 import { toDate } from './format'
 import { hasRoute, routeLabel } from './route'
+import { countryOf } from './money'
 
 const time = (d) => toDate(d)?.getTime() || 0
 
@@ -47,7 +48,12 @@ export function buildActivityFeed({
         .join(' · '),
       amount: e.amount || 0,
       tone: 'out',
-      country: e.country || 'JP',
+      country: countryOf(e),
+      // Editable in place. The row used to link to '/history' — the page it is
+      // already on — so tapping an expense here did nothing at all. Carrying
+      // the record lets the same editor open from the feed.
+      edit: 'expense',
+      record: e,
       to: '/history',
     })
   }
@@ -62,7 +68,9 @@ export function buildActivityFeed({
       detail: [r.note?.trim(), r.account && `→ ${r.account}`].filter(Boolean).join(' · '),
       amount: r.amount || 0,
       tone: 'in',
-      country: 'JP',
+      country: countryOf(r),
+      edit: 'income',
+      record: r,
       to: '/history',
     })
   }
@@ -115,7 +123,7 @@ export function buildActivityFeed({
       detail: [w.note?.trim(), '→ cash'].filter(Boolean).join(' · '),
       amount: w.amount || 0,
       tone: 'move',
-      country: w.country || 'JP',
+      country: countryOf(w),
       to: '/cash',
     })
   }
@@ -162,7 +170,7 @@ export function buildActivityFeed({
       detail: [f.friend, f.store].filter(Boolean).join(' · '),
       amount: f.cost || f.paid || 0,
       tone: 'out',
-      country: f.country || 'JP',
+      country: countryOf(f),
       to: '/friends',
     })
   }
@@ -216,7 +224,7 @@ export function buildActivityFeed({
       detail: c.note?.trim() || '',
       amount: total,
       tone: 'move',
-      country: c.country || 'JP',
+      country: countryOf(c),
       to: '/cash',
     })
   }
@@ -224,7 +232,35 @@ export function buildActivityFeed({
   // Hand-logged credits and debits on an account. Money really did arrive or
   // leave, so they read as in/out — but they're balance moves, not spending,
   // and nothing else in the app counts them.
+  //
+  // A MOVE IS ONE EVENT, NOT TWO. Move money writes a matched debit and credit
+  // carrying the same `moveId`; listing both would report a single transfer as
+  // two unrelated things that happened to you — "Debited ₹8,335.25" in one
+  // place and "Credited ₹8,335.25" in another — and double the apparent
+  // traffic on the History page. They are folded back into the one row here.
+  const movedIds = new Set()
   for (const a of accountEntries) {
+    if (!a.moveId || movedIds.has(a.moveId)) continue
+    movedIds.add(a.moveId)
+    rows.push({
+      id: `mv-${a.moveId}`,
+      date: toDate(a.date),
+      icon: '↔',
+      kind: 'Moved',
+      title: a.moveFrom && a.moveTo ? `${a.moveFrom} → ${a.moveTo}` : 'Moved money',
+      // Not spending and not income: you have exactly as much as before, it is
+      // just somewhere else. `tone: 'neutral'` is what keeps it out of the
+      // in/out colouring the other rows use.
+      detail: 'between your own accounts',
+      amount: a.amount || 0,
+      tone: 'neutral',
+      country: countryOf(a),
+      to: '/balances',
+    })
+  }
+
+  for (const a of accountEntries) {
+    if (a.moveId) continue // already shown as one move above
     const credit = a.direction !== 'debit'
     rows.push({
       id: `ae-${a.id}`,
@@ -235,7 +271,7 @@ export function buildActivityFeed({
       detail: a.account ? `${credit ? 'into' : 'from'} ${a.account}` : '',
       amount: a.amount || 0,
       tone: credit ? 'in' : 'out',
-      country: a.country || 'JP',
+      country: countryOf(a),
       to: '/balances',
     })
   }

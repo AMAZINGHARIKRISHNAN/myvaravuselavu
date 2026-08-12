@@ -49,12 +49,16 @@ export function parseBackup(text) {
 }
 
 export async function buildBackup(uid) {
-  const collections = {}
-  for (const name of COLLECTIONS) {
-    const records = await fetchCollectionOnce(uid, name)
-    collections[name] = records.map(serializeRecord)
-  }
-  const settings = await fetchSettingsOnce(uid)
+  // All twenty-odd collections at once. They do not depend on each other, and
+  // fetching them one after another made an export twenty-odd round trips long
+  // — noticeably slow on a phone, for no reason.
+  const [settings, ...fetched] = await Promise.all([
+    fetchSettingsOnce(uid),
+    ...COLLECTIONS.map((name) => fetchCollectionOnce(uid, name)),
+  ])
+  const collections = Object.fromEntries(
+    COLLECTIONS.map((name, i) => [name, fetched[i].map(serializeRecord)])
+  )
   return {
     app: BACKUP_APP,
     version: BACKUP_VERSION,
@@ -83,6 +87,15 @@ export function downloadBackup(backup) {
   const a = document.createElement('a')
   a.href = url
   a.download = `mvs-backup-${stamp}.json`
+  // In the DOM before the click and revoked a beat after it, because a
+  // detached anchor is ignored by Firefox and revoking in the same tick
+  // cancels the download on iOS Safari — which is where this app actually
+  // runs. A backup that silently doesn't save is worse than no backup button.
+  a.style.display = 'none'
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  setTimeout(() => {
+    URL.revokeObjectURL(url)
+    a.remove()
+  }, 1000)
 }

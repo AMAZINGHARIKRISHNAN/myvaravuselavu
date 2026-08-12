@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { lossAmount, sumLosses, splitLosses, sortLosses, lossKind } from './loss'
+import { lossAmount, splitLosses, sortLosses, lossKind } from './loss'
 import { profitEvents, buildProfitSources, splitGainLoss } from './profit'
 
 const loss = (over) => ({ id: 'l1', label: 'Fee', paid: 500, recovered: 0, ...over })
@@ -20,7 +20,8 @@ describe('lossAmount', () => {
   })
 
   it('sums a list', () => {
-    expect(sumLosses([loss({ paid: 500 }), loss({ paid: 2946, recovered: 2610 })])).toBe(836)
+    expect([loss({ paid: 500 }), loss({ paid: 2946, recovered: 2610 })]
+      .reduce((s, l) => s + lossAmount(l), 0)).toBe(836)
   })
 })
 

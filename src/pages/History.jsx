@@ -12,12 +12,14 @@ import { downloadCsv, formatDateForCsv, parseCsvDate } from '../lib/csv'
 import { normalizeStore, rankStores, storeKey } from '../lib/stores'
 import { hasRoute, routeLabel } from '../lib/route'
 import EntryFlow from '../components/entry/EntryFlow'
+import MoveMoneySheet from '../components/entry/MoveMoneySheet'
 import IncomeForm from '../components/entry/IncomeForm'
 import EmptyState from '../components/ui/EmptyState'
 import Skeleton from '../components/ui/Skeleton'
 import CsvImportButton from '../components/ui/CsvImportButton'
 import FloatingActionButton from '../components/ui/FloatingActionButton'
 import SwipeableRow from '../components/ui/SwipeableRow'
+import { countryOf } from '../lib/money'
 
 const EMPTY = ''
 
@@ -31,8 +33,23 @@ export default function History() {
   const [store, setStore] = useState(EMPTY)
   const [search, setSearch] = useState('')
   const [editing, setEditing] = useState(null)
+  // Which editor to open. Used to be inferred from the active tab, so the
+  // All tab — where `tab` is neither 'expenses' nor 'income' — rendered no
+  // editor at all and the pencil was a dead tap.
+  const [editKind, setEditKind] = useState(null)
+  const openEditor = (record, kind) => {
+    setEditing(record)
+    setEditKind(kind)
+  }
+  const closeEditor = () => {
+    setEditing(null)
+    setEditKind(null)
+  }
   const [addingIncome, setAddingIncome] = useState(false)
   const [addingExpense, setAddingExpense] = useState(false)
+  // null = closed; an object = open, carrying whatever the entry flow
+  // already knew (the amount typed on the keypad, the date chosen).
+  const [showMove, setShowMove] = useState(null)
   // Date to stamp new entries with — for logging things after the fact (a trip
   // last week, a bill you forgot). Defaults to today.
   const [logDate, setLogDate] = useState(() => toDateInputValue(new Date()))
@@ -479,24 +496,33 @@ export default function History() {
           />
         )}
 
-        {/* All-activity tab: read-only timeline, each row taps through to the
-            screen that owns it (and where it can be edited). */}
+        {/* All-activity tab: one timeline over every collection. Expenses and
+            income open their editor in place — they used to link to '/history',
+            the page already on screen, so the tap did nothing. The rest still
+            tap through to the screen that owns them. */}
         {tab === 'all' &&
           dayGroups.map((group) => (
             <div key={group.key} className="space-y-2">
               <p className="status-line px-1 pt-2 text-xs font-semibold text-gray-400">
                 {group.label}
               </p>
-              {group.records.map((r) => (
-                <Link
+              {group.records.map((r) => {
+                // Expenses and income are edited right here; everything else
+                // still taps through to the screen that owns it.
+                const Row = r.edit ? 'button' : Link
+                const rowProps = r.edit
+                  ? { type: 'button', onClick: () => openEditor(r.record, r.edit) }
+                  : { to: r.to }
+                return (
+                <Row
                   key={r.id}
-                  to={r.to}
+                  {...rowProps}
                   // The feed already computes a tone for every row; under a HUD
                   // that becomes a stripe down the row's left edge, so the
                   // direction of money reads while scrolling without stopping
                   // to parse a sign. Ignored by flat skins.
                   data-tone={r.tone}
-                  className="card flex items-center gap-3 p-3 pl-4 transition-transform active:scale-[0.99] touch-manipulation"
+                  className="card flex w-full items-center gap-3 p-3 pl-4 text-left transition-transform active:scale-[0.99] touch-manipulation"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-base dark:bg-neutral-800">
                     {r.icon}
@@ -522,9 +548,14 @@ export default function History() {
                     {r.tone === 'in' ? '+' : r.tone === 'out' ? '−' : ''}
                     {formatByCountry(r.amount, r.country)}
                   </span>
-                  <ChevronRight size={15} className="shrink-0 text-gray-400" aria-hidden="true" />
-                </Link>
-              ))}
+                  {r.edit ? (
+                    <Pencil size={14} className="shrink-0 text-gray-400" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight size={15} className="shrink-0 text-gray-400" aria-hidden="true" />
+                  )}
+                </Row>
+                )
+              })}
             </div>
           ))}
 
@@ -546,7 +577,7 @@ export default function History() {
             {group.records.map((record) => (
               <SwipeableRow
                 key={record.id}
-                onEdit={() => setEditing(record)}
+                onEdit={() => openEditor(record, tab === 'expenses' ? 'expense' : 'income')}
                 onDelete={() => activeUndo.requestDelete(record.id)}
               >
               <div
@@ -564,11 +595,11 @@ export default function History() {
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
-                    {tab === 'expenses' ? formatByCountry(record.amount, record.country) : formatJPY(record.amount)}
+                    {tab === 'expenses' ? formatByCountry(record.amount, countryOf(record)) : formatJPY(record.amount)}
                   </p>
                   <p className="text-xs text-gray-500 truncate dark:text-gray-400">
                     {tab === 'expenses'
-                      ? `${record.category} · ${record.paymentMethod || '—'} · ${record.country}`
+                      ? `${record.category} · ${record.paymentMethod || '—'} · ${countryOf(record)}`
                       : record.source}
                     {/* A journey shows its route; everything else its shop. */}
                     {hasRoute(record)
@@ -578,12 +609,12 @@ export default function History() {
                     {record.note && ` · ${record.note}`}
                   </p>
                 </div>
-                <div className="flex shrink-0">
+                <div className="flex shrink-0 gap-0.5">
                   <button
                     type="button"
-                    onClick={() => setEditing(record)}
+                    onClick={() => openEditor(record, tab === 'expenses' ? 'expense' : 'income')}
                     aria-label="Edit"
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
                   >
                     <Pencil size={15} />
                   </button>
@@ -591,7 +622,7 @@ export default function History() {
                     type="button"
                     onClick={() => activeUndo.requestDelete(record.id)}
                     aria-label="Delete"
-                    className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
                   >
                     <Trash2 size={15} />
                   </button>
@@ -611,16 +642,22 @@ export default function History() {
         onClick={() => (tab === 'income' ? setAddingIncome(true) : setAddingExpense(true))}
       />
 
-      {editing && tab === 'expenses' && (
-        <EntryFlow initial={editing} onClose={() => setEditing(null)} />
-      )}
-      {editing && tab === 'income' && <IncomeForm initial={editing} onClose={() => setEditing(null)} />}
+      {editing && editKind === 'expense' && <EntryFlow initial={editing} onClose={closeEditor} />}
+      {editing && editKind === 'income' && <IncomeForm initial={editing} onClose={closeEditor} />}
       {addingIncome && (
         <IncomeForm initialDate={parseDateInput(logDate)} onClose={() => setAddingIncome(false)} />
       )}
       {addingExpense && (
-        <EntryFlow initialDate={parseDateInput(logDate)} onClose={() => setAddingExpense(false)} />
+        <EntryFlow
+          initialDate={parseDateInput(logDate)}
+          onMoveMoney={(carried) => {
+            setAddingExpense(false)
+            setShowMove(carried || {})
+          }}
+          onClose={() => setAddingExpense(false)}
+        />
       )}
+      {showMove && <MoveMoneySheet initial={showMove} onClose={() => setShowMove(null)} />}
     </div>
   )
 }

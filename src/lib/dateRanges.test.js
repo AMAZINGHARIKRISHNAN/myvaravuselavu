@@ -47,3 +47,39 @@ describe('dateRanges', () => {
     expect(y.end.getMonth()).toBe(11)
   })
 })
+
+// The helpers take the clock so a screen can depend on the day changing.
+// Reaching for new Date() internally meant a useMemo built on them froze at
+// whatever moment the installed PWA was first opened.
+describe('ranges are computed from the clock they are given', () => {
+  const newYearsEve = new Date(2026, 11, 31, 23, 59)
+  const newYearsDay = new Date(2027, 0, 1, 0, 1)
+
+  it('monthRange follows the date passed in', () => {
+    expect(monthRange(0, newYearsEve).key).toBe('2026-12')
+    expect(monthRange(0, newYearsDay).key).toBe('2027-01')
+    expect(monthRange(1, newYearsDay).key).toBe('2026-12')
+  })
+
+  it('currentMonthRange rolls over at midnight', () => {
+    expect(currentMonthRange(newYearsEve).start.getMonth()).toBe(11)
+    expect(currentMonthRange(newYearsDay).start.getMonth()).toBe(0)
+    expect(currentMonthRange(newYearsDay).start.getFullYear()).toBe(2027)
+  })
+
+  it('currentYearRange rolls over too', () => {
+    expect(currentYearRange(newYearsEve).start.getFullYear()).toBe(2026)
+    expect(currentYearRange(newYearsDay).start.getFullYear()).toBe(2027)
+  })
+
+  it('lastNMonthsRange counts back from the date given', () => {
+    const r = lastNMonthsRange(6, newYearsDay)
+    expect(r.start.getFullYear()).toBe(2026)
+    expect(r.start.getMonth()).toBe(7) // August
+    expect(r.end.getMonth()).toBe(0)
+  })
+
+  it('still defaults to now when no clock is passed', () => {
+    expect(monthRange(0).key).toBe(monthRange(0, new Date()).key)
+  })
+})

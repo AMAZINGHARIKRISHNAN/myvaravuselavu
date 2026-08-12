@@ -4,10 +4,10 @@ import { useCollection } from '../hooks/useCollection'
 import { useCollectionWriters } from '../hooks/useCollectionWriters'
 import { useBatchOps } from '../hooks/useBatchOps'
 import { useUndoableDelete } from '../hooks/useUndoableDelete'
+import { fundingSources, paymentMethodsFor } from '../lib/money'
 import { useSettings } from '../hooks/useSettings'
 import { useToast } from '../context/ToastContext'
 import { formatJPY, toDate, toDateInputValue, parseDateInput } from '../lib/format'
-import { NON_ACCOUNT_PAYMENT_METHODS } from '../lib/constants'
 import BottomSheet from '../components/ui/BottomSheet'
 import EmptyState from '../components/ui/EmptyState'
 import FloatingActionButton from '../components/ui/FloatingActionButton'
@@ -508,12 +508,12 @@ function OrderRow({ order: o, onReturn, onEdit, onDelete }) {
       <span className="shrink-0 text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
         {formatJPY(o.total || 0)}
       </span>
-      <div className="flex shrink-0">
+      <div className="flex shrink-0 gap-0.5">
         <button
           type="button"
           onClick={onReturn}
           aria-label={returned ? 'View return' : 'Record return'}
-          className={`flex h-10 w-10 items-center justify-center rounded-full transition-all active:scale-90 touch-manipulation ${
+          className={`flex h-11 w-11 items-center justify-center rounded-full transition-all active:scale-90 touch-manipulation ${
             returned
               ? 'text-emerald-500 dark:text-emerald-400'
               : 'text-gray-400 hover:text-amber-600 dark:text-gray-500 dark:hover:text-amber-400'
@@ -525,7 +525,7 @@ function OrderRow({ order: o, onReturn, onEdit, onDelete }) {
           type="button"
           onClick={onEdit}
           aria-label="Edit order"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
         >
           <Pencil size={15} />
         </button>
@@ -533,7 +533,7 @@ function OrderRow({ order: o, onReturn, onEdit, onDelete }) {
           type="button"
           onClick={onDelete}
           aria-label="Delete order"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
         >
           <Trash2 size={15} />
         </button>
@@ -548,7 +548,10 @@ function OrderSheet({ initial, onSave, onClose }) {
   const { toast } = useToast()
   const { settings } = useSettings()
   const accounts = settings?.accounts || []
-  const methods = [...accounts.map((a) => a.label), ...NON_ACCOUNT_PAYMENT_METHODS]
+  // Every order this page writes is stored as country 'JP', so offering a
+  // rupee account or UPI could only ever produce a record that contradicts
+  // itself — yen spending taken out of an Indian balance.
+  const methods = paymentMethodsFor(accounts, 'JP')
 
   const [store, setStore] = useState(initial?.store ?? 'Temu')
   const [item, setItem] = useState(initial?.item ?? '')
@@ -852,7 +855,7 @@ function ReturnSheet({ order, onReturn, onUndo, onMarkReceived, onClose }) {
         <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
           <p>Refund goes to (that balance goes up)</p>
           <div className="flex flex-wrap gap-2">
-            {['Cash', ...accounts.map((a) => a.label)].map((label) => (
+            {fundingSources(accounts, 'JP').map((label) => (
               <button
                 key={label}
                 type="button"
@@ -986,7 +989,7 @@ function PointsCard({ balances, entries, onAdd, onDelete }) {
                     toast('🗑 Points entry removed')
                   }}
                   aria-label="Delete points entry"
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
                 >
                   <Trash2 size={13} />
                 </button>

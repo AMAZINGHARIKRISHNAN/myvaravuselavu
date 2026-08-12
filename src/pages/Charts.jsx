@@ -20,6 +20,7 @@ import { formatJPY, formatINR, formatPercent, toDate } from '../lib/format'
 import { CATEGORY_ICONS } from '../lib/constants'
 import { rankStores, storeCoverage } from '../lib/stores'
 import { sumIn, inCountry } from '../lib/money'
+import { useToday } from '../hooks/useToday'
 import { useTheme } from '../context/ThemeContext'
 import { chartTheme, donutSlices, colorForKey } from '../lib/chartTheme'
 import GradientDonut from '../components/charts/GradientDonut'
@@ -197,9 +198,12 @@ export default function Charts() {
   const accent = ct.accent
   const SERIES = ct.series
 
-  const monthRange = useMemo(currentMonthRange, [])
-  const sixMonthRange = useMemo(() => lastNMonthsRange(6), [])
-  const yearRange = useMemo(currentYearRange, [])
+  // Keyed on the day, not on []: an installed PWA left open over a month
+  // boundary used to keep querying (and captioning) the month it was opened in.
+  const today = useToday()
+  const monthRange = useMemo(() => currentMonthRange(today), [today])
+  const sixMonthRange = useMemo(() => lastNMonthsRange(6, today), [today])
+  const yearRange = useMemo(() => currentYearRange(today), [today])
 
   const monthExpenses = useCollection('expenses', { dateRange: monthRange })
   const rangeIncome = useCollection('income', { dateRange: sixMonthRange })
@@ -324,6 +328,10 @@ export default function Charts() {
   const hasProfitTrend = profitTrend.some((m) => m.profit !== 0)
 
   const noExpensesThisMonth = !monthExpenses.loading && pieExpenses.length === 0
+  // Recharts happily draws labelled axes around no data at all, which looks
+  // like a rendering failure rather than an empty account. One flag decides
+  // whether the six-month charts draw or explain themselves.
+  const hasTrend = monthlyTrend.some((m) => m.income || m.expenses || m.transfers)
 
   // Six named slices plus a rolled-up "Other": more than that and a ring stops
   // being readable, however pretty it looks.
@@ -428,10 +436,25 @@ export default function Charts() {
       <ChartCard
         title={`No-spend heatmap (this month${hasInExpenses ? `, ${pieCountry === 'IN' ? 'India' : 'Japan'}` : ''})`}
       >
-        <SpendHeatmap expenses={pieExpenses} formatter={pieFormatter} />
+        {noExpensesThisMonth ? (
+          <EmptyState
+            icon="🟩"
+            title="Nothing logged this month"
+            hint="Every day you spend nothing turns green here — the streak starts with your first entry."
+          />
+        ) : (
+          <SpendHeatmap expenses={pieExpenses} formatter={pieFormatter} />
+        )}
       </ChartCard>
 
       <ChartCard title="Income vs expenses vs transfers (last 6 months)">
+        {!hasTrend ? (
+          <EmptyState
+            icon="📈"
+            title="Not enough history yet"
+            hint="Once a month or two of income and spending is logged, the shape of it shows up here."
+          />
+        ) : (
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={monthlyTrend}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
@@ -444,9 +467,17 @@ export default function Charts() {
             <Bar dataKey="transfers" fill={SERIES.transfers} name="Transfers" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
+        )}
       </ChartCard>
 
       <ChartCard title="Savings rate trend">
+        {!hasTrend ? (
+          <EmptyState
+            icon="🫙"
+            title="No savings rate yet"
+            hint="A rate needs income to measure against — log a salary and this starts tracking."
+          />
+        ) : (
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={monthlyTrend}>
             <defs>
@@ -470,6 +501,7 @@ export default function Charts() {
             />
           </AreaChart>
         </ResponsiveContainer>
+        )}
       </ChartCard>
 
       {hasProfitTrend && (
@@ -505,11 +537,22 @@ function CountryToggleButton({ active, onClick, children }) {
   )
 }
 
-function EmptyState() {
+// Says what would fill the space and how to make that happen. A chart frame
+// with nothing in it reads as broken on a brand-new account; naming the thing
+// that is missing turns it into an instruction.
+function EmptyState({
+  icon = '📊',
+  title = 'No expenses yet this month',
+  hint = 'Log one with the + button and this fills in straight away.',
+}) {
   return (
-    <p className="text-sm text-gray-500 text-center py-16 dark:text-gray-400">
-      No expenses yet this month
-    </p>
+    <div className="flex flex-col items-center gap-1.5 px-4 py-14 text-center">
+      <span className="text-2xl" aria-hidden="true">
+        {icon}
+      </span>
+      <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{title}</p>
+      <p className="max-w-xs text-xs text-gray-500 dark:text-gray-400">{hint}</p>
+    </div>
   )
 }
 

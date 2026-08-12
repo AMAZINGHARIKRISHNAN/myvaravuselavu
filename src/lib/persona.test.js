@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   PERSONAS,
   personaOf,
-  isPersona,
   leadQuestion,
   bootScript,
   saluteFor,
@@ -18,7 +17,6 @@ describe('the roster', () => {
   })
 
   it('falls back rather than leaving the app mute', () => {
-    expect(isPersona('classic')).toBe(false)
     expect(personaOf('classic').key).toBe('jarvis')
     expect(personaOf(undefined).key).toBe('jarvis')
   })

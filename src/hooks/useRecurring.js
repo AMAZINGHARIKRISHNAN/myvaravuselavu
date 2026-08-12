@@ -6,28 +6,33 @@ import {
   updateRecurring,
   deleteRecurring,
 } from '../lib/firestore'
+import { createSharedRegistry } from '../lib/subscriptionRegistry'
+import { registerLiveData } from '../lib/liveData'
+
+// Shared for the same reason useSettings is: the Dashboard renders both the
+// safe-to-spend figure and the "due this month" card, and each was opening its
+// own listener on the same short list.
+const { acquire } = registerLiveData(createSharedRegistry({ initialData: [] }))
 
 export function useRecurring() {
   const { user } = useAuth()
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [state, setState] = useState({ data: [], loading: true })
 
   useEffect(() => {
-    if (!user) return
-    setLoading(true)
-    const unsubscribe = subscribeToRecurring(user.uid, {
-      onData: (records) => {
-        setData(records)
-        setLoading(false)
-      },
-      onError: () => setLoading(false),
-    })
-    return unsubscribe
+    if (!user) {
+      setState({ data: [], loading: false })
+      return
+    }
+    return acquire(
+      user.uid,
+      (handlers) => subscribeToRecurring(user.uid, handlers),
+      (entry) => setState({ data: entry.data, loading: entry.loading })
+    )
   }, [user])
 
   const add = (record) => addRecurring(user.uid, record)
   const update = (id, record) => updateRecurring(user.uid, id, record)
   const remove = (id) => deleteRecurring(user.uid, id)
 
-  return { data, loading, add, update, remove }
+  return { data: state.data, loading: state.loading, add, update, remove }
 }

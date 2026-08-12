@@ -13,6 +13,7 @@ import { rankStores } from '../lib/stores'
 import { CATEGORY_ICONS } from '../lib/constants'
 import ImageReportButton from '../components/dashboard/ImageReportButton'
 import Skeleton from '../components/ui/Skeleton'
+import { useToday } from '../hooks/useToday'
 
 // The month-end moment. Everything the app already knows, assembled into one
 // screen you read once a month (on salary day) instead of piecing together
@@ -45,8 +46,9 @@ export default function Review() {
   const offset = pickedOffset ?? defaultMonthOffset(settings?.salaryDate || 25)
   const setOffset = (next) => setPickedOffset((prev) => next(prev ?? offset))
 
-  const range = useMemo(() => monthRange(offset), [offset])
-  const prevRange = useMemo(() => monthRange(offset + 1), [offset])
+  const today = useToday()
+  const range = useMemo(() => monthRange(offset, today), [offset, today])
+  const prevRange = useMemo(() => monthRange(offset + 1, today), [offset, today])
 
   const income = useCollection('income', { dateRange: range })
   const expenses = useCollection('expenses', { dateRange: range })
@@ -178,7 +180,7 @@ export default function Review() {
           type="button"
           onClick={() => setOffset((o) => o + 1)}
           aria-label="Previous month"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-gray-200 transition-transform active:scale-90 touch-manipulation"
+          className="flex tap-target h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-gray-200 transition-transform active:scale-90 touch-manipulation"
         >
           <ChevronLeft size={16} />
         </button>
@@ -188,7 +190,7 @@ export default function Review() {
           onClick={() => setOffset((o) => Math.max(0, o - 1))}
           disabled={offset === 0}
           aria-label="Next month"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-gray-200 transition-transform active:scale-90 touch-manipulation disabled:opacity-30"
+          className="flex tap-target h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/10 text-gray-200 transition-transform active:scale-90 touch-manipulation disabled:opacity-30"
         >
           <ChevronRight size={16} />
         </button>

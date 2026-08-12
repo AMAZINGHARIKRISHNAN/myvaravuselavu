@@ -8,6 +8,7 @@
 // and shows the drift so you know when it's time to count again.
 import { toDate } from './format'
 import { passSpentFrom, passDeduction } from './passes'
+import { countryOf } from './money'
 
 // Notes and coins in circulation, biggest first. ¥2,000 notes are rare but
 // real; ₹2,000 was withdrawn in 2023 so it isn't offered.
@@ -70,6 +71,13 @@ export function latestCounts(counts = [], country = 'JP') {
 // Using the most recent count across all stashes as the single cutoff is what
 // keeps backfilled records from double-deducting: anything dated before you
 // last counted was already in your hand when you counted it.
+//
+// The cutoff is INCLUSIVE (>=) — see the note in wallet.js/cardBalance.
+// parseDateInput() stamps every backdated entry at exactly noon, so a count
+// and an expense you both date to last Tuesday share one timestamp; a
+// strictly-greater cutoff dropped that expense and reported more cash on hand
+// than you were holding. Counting live still ignores earlier spending that
+// day, because those records carry a genuinely earlier clock time.
 export function cashPosition({
   counts = [],
   expenses = [],
@@ -90,23 +98,23 @@ export function cashPosition({
   // of the yen in your pocket.
   const spent = expenses
     .filter(
-      (e) => e.paymentMethod === 'Cash' && (e.country || 'JP') === country && timeOf(e) > since
+      (e) => e.paymentMethod === 'Cash' && countryOf(e) === country && timeOf(e) >= since
     )
     .reduce((s, e) => s + (e.amount || 0), 0)
   // Cash income in THIS currency — rupees handed to you can't swell the yen
   // in your pocket. Records written before income carried a country are yen.
   const received = income
-    .filter((r) => r.account === 'Cash' && (r.country || 'JP') === country && timeOf(r) > since)
+    .filter((r) => r.account === 'Cash' && (r.country || 'JP') === country && timeOf(r) >= since)
     .reduce((s, r) => s + (r.amount || 0), 0)
   // Loading a prepaid card with cash takes the notes out of your pocket.
   const loaded = recharges
-    .filter((r) => r.paidFrom === 'Cash' && timeOf(r) > since)
+    .filter((r) => r.paidFrom === 'Cash' && timeOf(r) >= since)
     .reduce((s, r) => s + (r.amount || 0), 0)
   // Paying cash for something the office will repay: it's their money, but
   // it left YOUR wallet today. The repayment arrives later as income, so
   // counting only that side would make cash on hand drift upward forever.
   const fronted = officeItems
-    .filter((i) => i.paidWith === 'Cash' && timeOf(i) > since)
+    .filter((i) => i.paidWith === 'Cash' && timeOf(i) >= since)
     .reduce((s, i) => s + (i.amount || 0), 0)
   // A commuter pass or its card deposit paid in cash (JPY only).
   const passCash = country === 'JP' ? passSpentFrom(passes, 'Cash', since) : 0
@@ -114,14 +122,14 @@ export function cashPosition({
   // the notes in your pocket go up. Matched by currency — a yen withdrawal
   // can't top up rupee cash.
   const withdrawn = withdrawals
-    .filter((w) => (w.country || 'JP') === country && timeOf(w) > since)
+    .filter((w) => (w.country || 'JP') === country && timeOf(w) >= since)
     .reduce((s, w) => s + (w.amount || 0), 0)
   // Hand-logged ➕/➖ on cash, in this currency: how rupee cash gets corrected
   // upward (income records are yen-only), and how any found-or-lost notes are
   // explained during a reconcile.
   const adjusted = accountEntries
     .filter(
-      (a) => a.account === 'Cash' && (a.country || 'JP') === country && timeOf(a) > since
+      (a) => a.account === 'Cash' && (a.country || 'JP') === country && timeOf(a) >= since
     )
     .reduce((s, a) => s + (a.direction === 'debit' ? -(a.amount || 0) : a.amount || 0), 0)
 
@@ -175,11 +183,13 @@ export function cashLedger({
   const since = current.length ? timeOf(current[0]) : -Infinity
   const isJP = country === 'JP'
   const at = (r) => toDate(r.date ?? r.startDate)
-  const after = (r) => (at(r)?.getTime() || 0) > since
+  // Inclusive, matching cashPosition — the ledger must explain exactly the
+  // drift that cashPosition computed, so both sides use the same cutoff.
+  const after = (r) => (at(r)?.getTime() || 0) >= since
   const rows = []
 
   for (const e of expenses) {
-    if (e.paymentMethod !== 'Cash' || (e.country || 'JP') !== country || !after(e)) continue
+    if (e.paymentMethod !== 'Cash' || countryOf(e) !== country || !after(e)) continue
     rows.push({
       id: `e-${e.id}`,
       date: at(e),

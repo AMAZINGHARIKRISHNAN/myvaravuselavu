@@ -184,6 +184,36 @@ select:focus-visible,
 }
 
 @layer components {
+  /* A 44px hit area on a control that is DRAWN smaller.
+
+     The 44px minimum (WCAG 2.5.5, and Apple's and Google's own guidance) is
+     about the finger, not the ink — a 32px close button inside a pill looks
+     right and is genuinely hard to hit. Growing the element would grow the
+     pill with it, so the target is grown instead, by a transparent
+     pseudo-element centred on the control. Layout is untouched: the pseudo is
+     absolutely positioned, so nothing around it moves.
+
+     Icon buttons with NO background don't need this — they can simply be
+     h-11 w-11, because a bigger transparent box around the same glyph looks
+     identical. This is for the ones wearing a visible pill or border.
+
+     Note for adjacent controls: two of these side by side will overlap unless
+     their centres are ≥44px apart. Where a pair sits together (edit next to
+     delete) the buttons are made physically 44px instead, so their targets
+     tile rather than fight — which is the case that actually costs you data. */
+  .tap-target {
+    position: relative;
+  }
+  .tap-target::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+
   .input {
     /* text-base (16px) on phones is NOT cosmetic: any focused input below
        16px makes iOS Safari auto-zoom the whole page. Desktop gets the

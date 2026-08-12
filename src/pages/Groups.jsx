@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import Portal from '../components/ui/Portal'
 import { ArrowLeft, Camera, HandCoins, Pencil, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
 import { useCollectionWriters } from '../hooks/useCollectionWriters'
@@ -9,7 +10,7 @@ import { useToast } from '../context/ToastContext'
 import { formatByCountry, toDate, toDateInputValue, parseDateInput } from '../lib/format'
 import { downloadCsv, formatDateForCsv } from '../lib/csv'
 import { computeGroupReport, settleSuggestions, balanceLog, groupOwner } from '../lib/sharedGroups'
-import { NON_ACCOUNT_PAYMENT_METHODS } from '../lib/constants'
+import { paymentMethodsFor } from '../lib/money'
 import { useSettings } from '../hooks/useSettings'
 import { compressImage } from '../lib/imageCompress'
 import { celebrate } from '../lib/celebrate'
@@ -28,7 +29,10 @@ const NO_MEMBERS = []
 // they bought for the house, every expense splits equally between members,
 // and the report says exactly who has to give whom how much to square up.
 export default function Groups() {
-  const { data: groups, loading: groupsLoading, add: addGroup, update: updateGroup, remove: removeGroup } =
+  // No `remove` here: deleting a group is never a single-document write — it
+  // has to take the group's entries and their mirrors with it, which
+  // deleteGroup() does as one batched commit.
+  const { data: groups, loading: groupsLoading, add: addGroup, update: updateGroup } =
     useCollection('groups')
   const { data: allEntries, loading: entriesLoading, update: updateEntry } =
     useCollection('groupExpenses')
@@ -162,26 +166,45 @@ export default function Groups() {
     }
   }
 
-  // Renaming a member must carry their history along, otherwise their past
-  // payments stop counting toward anyone's balance.
-  const remapEntryNames = async (groupId, renames) => {
-    const entries = allEntries.filter((e) => e.groupId === groupId)
-    for (const e of entries) {
-      const patch = {}
-      if (renames[e.paidBy]) patch.paidBy = renames[e.paidBy]
-      if (e.to && renames[e.to]) patch.to = renames[e.to]
-      if (Object.keys(patch).length) await updateEntry(e.id, patch)
+  // Firestore commits at most 500 operations, so anything built from "every
+  // entry in this group" goes in whole chunks rather than one write per row.
+  // One write per row was both slow and only half-safe: a connection that
+  // dropped in the middle left the group in a state neither the app nor the
+  // user could describe.
+  const commitInChunks = async (ops, size = 400) => {
+    for (let i = 0; i < ops.length; i += size) {
+      await batchOps(ops.slice(i, i + size))
     }
+  }
+
+  // Renaming a member must carry their history along, otherwise their past
+  // payments stop counting toward anyone's balance — so the rename lands as
+  // one commit, not a row at a time that can stop halfway.
+  const remapEntryNames = async (groupId, renames) => {
+    const ops = []
+    for (const e of allEntries.filter((x) => x.groupId === groupId)) {
+      const data = {}
+      if (renames[e.paidBy]) data.paidBy = renames[e.paidBy]
+      if (e.to && renames[e.to]) data.to = renames[e.to]
+      if (Object.keys(data).length) ops.push({ op: 'update', name: 'groupExpenses', id: e.id, data })
+    }
+    await commitInChunks(ops)
   }
 
   // Deleting a group takes its entries with it — and their Dashboard mirrors.
   // Plain removeEntry() would strand the mirrored expenses/income in the main
   // books, where they stay visible forever with no group left to explain them.
   const deleteGroup = async (group) => {
+    const ops = []
     for (const e of allEntries.filter((x) => x.groupId === group.id)) {
-      await removeEntrySynced(e.id)
+      ops.push({ op: 'delete', name: 'groupExpenses', id: e.id })
+      if (e.expenseId) ops.push({ op: 'delete', name: 'expenses', id: e.expenseId })
+      if (e.incomeId) ops.push({ op: 'delete', name: 'income', id: e.incomeId })
     }
-    await removeGroup(group.id)
+    // The group itself goes last, so a failure part-way through leaves the
+    // group standing and the whole thing safe to retry.
+    ops.push({ op: 'delete', name: 'groups', id: group.id })
+    await commitInChunks(ops)
     setSelectedId(null)
     toast(`🗑 ${group.name} deleted`)
   }
@@ -384,7 +407,7 @@ function GroupDetail({ group, entries, onBack, onEdit, addEntry, updateEntry, re
           type="button"
           onClick={onEdit}
           aria-label="Edit group"
-          className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-300 active:scale-90 touch-manipulation"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-300 active:scale-90 touch-manipulation"
         >
           <Pencil size={15} />
         </button>
@@ -400,6 +423,23 @@ function GroupDetail({ group, entries, onBack, onEdit, addEntry, updateEntry, re
             {' '}· each share {fmt(members.length ? report.total / members.length : 0)}
           </p>
         </div>
+        {/* Someone who paid for this household but is not on the member list
+            — usually a member renamed or removed after they had already bought
+            things. Their money is still theirs; showing it is what lets the
+            list be corrected, and what keeps the balances adding up. */}
+        {Object.entries(report.members)
+          .filter(([, s]) => s.external)
+          .map(([name, s]) => (
+            <p
+              key={`ext-${name}`}
+              className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400"
+            >
+              ⓘ <b>{name}</b> paid {fmt(s.paid)} for this group but is not on the member list.
+              They are still owed {fmt(s.net)}. Add them back, or rename a member to match, and
+              the balances square up.
+            </p>
+          ))}
+
         {/* Per-person totals: what each member has spent for the group so
             far, their fair share, and where that leaves their balance. */}
         <div className="grid grid-cols-2 gap-2.5">
@@ -651,13 +691,13 @@ function EntryRow({ entry: e, country, onViewImage, onEdit, onDelete }) {
       <span className="shrink-0 text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
         {formatByCountry(e.amount, country)}
       </span>
-      <div className="flex shrink-0">
+      <div className="flex shrink-0 gap-0.5">
         {onViewImage && (
           <button
             type="button"
             onClick={onViewImage}
             aria-label="View bill photo"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
           >
             <Camera size={15} />
           </button>
@@ -667,7 +707,7 @@ function EntryRow({ entry: e, country, onViewImage, onEdit, onDelete }) {
             type="button"
             onClick={onEdit}
             aria-label="Edit"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
           >
             <Pencil size={15} />
           </button>
@@ -676,7 +716,7 @@ function EntryRow({ entry: e, country, onViewImage, onEdit, onDelete }) {
           type="button"
           onClick={onDelete}
           aria-label="Delete"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
         >
           <Trash2 size={15} />
         </button>
@@ -880,7 +920,7 @@ function ExpenseSheet({ group, initial, placeNames = [], addEntry, updateEntry, 
                     type="button"
                     onClick={() => setItems((prev) => prev.filter((_, j) => j !== i))}
                     aria-label="Remove item"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -950,7 +990,7 @@ function ExpenseSheet({ group, initial, placeNames = [], addEntry, updateEntry, 
       {paidBy === owner && (
         <>
           <FieldBlock label="How did you pay?">
-            <PaymentPills value={paymentMethod} onChange={setPaymentMethod} />
+            <PaymentPills value={paymentMethod} onChange={setPaymentMethod} country={group.country} />
           </FieldBlock>
           <Field label="Dashboard category (this is your money, so it counts in your main spending too)">
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
@@ -1054,7 +1094,7 @@ function SettleSheet({ group, transfer, addEntry, onClose }) {
             : 'Where did the money land? (that balance goes up by this much)'
         }
       >
-        <PaymentPills value={paymentMethod} onChange={setPaymentMethod} />
+        <PaymentPills value={paymentMethod} onChange={setPaymentMethod} country={group.country} />
       </FieldBlock>
       <button type="submit" disabled={saving} className="btn-primary w-full py-3 text-sm">
         {saving ? 'Saving…' : 'Record payment'}
@@ -1085,11 +1125,15 @@ function rememberPaymentMethod(paymentMethod, country) {
   }
 }
 
-// Your accounts + the generic methods (Cash etc.), as tap-pills.
-function PaymentPills({ value, onChange }) {
+// The ways you can pay into THIS group's ledger, as tap-pills.
+//
+// A group is settled in one currency (group.country), so listing every account
+// let a yen share be paid from an Indian one — the group's maths stayed right
+// while the account it named lost rupees.
+function PaymentPills({ value, onChange, country = 'JP' }) {
   const { settings } = useSettings()
   const accounts = settings?.accounts || []
-  const options = [...accounts.map((a) => a.label), ...NON_ACCOUNT_PAYMENT_METHODS]
+  const options = paymentMethodsFor(accounts, country)
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((label) => (
@@ -1137,6 +1181,10 @@ function GroupForm({ initial, entries = [], onSave, onRename, onDelete, onClose 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // Timer handle for the confirm-again window below; cleared on unmount so a
+  // sheet closed mid-decision leaves nothing running.
+  const disarm = useRef(null)
+  useEffect(() => () => clearTimeout(disarm.current), [])
 
   const namedMembers = members.map((m) => m.trim()).filter(Boolean)
   // Fallback order when no owner is marked yet (or theirs was renamed):
@@ -1214,8 +1262,15 @@ function GroupForm({ initial, entries = [], onSave, onRename, onDelete, onClose 
   const handleDelete = async () => {
     if (!confirmDelete) {
       setConfirmDelete(true)
+      // Disarms itself. Deleting a group takes every expense in it and their
+      // mirrors in the main books, so the two-step warning is right here — but
+      // an armed state with no expiry meant arming it, being distracted, and
+      // coming back to a button that destroys all of that on a single tap.
+      clearTimeout(disarm.current)
+      disarm.current = setTimeout(() => setConfirmDelete(false), 5000)
       return
     }
+    clearTimeout(disarm.current)
     setSaving(true)
     try {
       await onDelete(initial)
@@ -1264,7 +1319,7 @@ function GroupForm({ initial, entries = [], onSave, onRename, onDelete, onClose 
                   type="button"
                   onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}
                   aria-label="Remove member"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -1435,13 +1490,17 @@ function CalcLogSheet({ group, entries, person, onClose }) {
 // Full-screen bill photo viewer — tap anywhere to dismiss.
 function ImageViewer({ src, onClose }) {
   return (
-    <button
-      type="button"
-      onClick={onClose}
-      aria-label="Close photo"
-      className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/90 p-4 animate-[toast-in_0.15s_ease-out]"
-    >
-      <img src={src} alt="Bill" className="max-h-full max-w-full rounded-xl object-contain" />
-    </button>
+    // Portalled so the lightbox covers the screen rather than the page's
+    // content box — see components/ui/Portal.jsx.
+    <Portal>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close photo"
+        className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/90 p-4 animate-[toast-in_0.15s_ease-out]"
+      >
+        <img src={src} alt="Bill" className="max-h-full max-w-full rounded-xl object-contain" />
+      </button>
+    </Portal>
   )
 }

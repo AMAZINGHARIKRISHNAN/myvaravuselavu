@@ -210,14 +210,22 @@ export function loadVoices(synth = globalThis.speechSynthesis, { timeout = 2000 
 
 // Resolution is stable for a given device + casting, and getVoices() is not
 // free, so the answer is remembered until the casting changes.
+//
+// A MISS IS NEVER CACHED. Chrome and Edge hand back an empty list until the
+// voiceschanged event arrives; if that lands after loadVoices() times out,
+// pickVoice() has nothing to choose from and returns null. Remembering that
+// null would leave the suit mute for the rest of the session even though the
+// voices showed up a moment later — so only a real voice is kept, and a miss
+// is simply retried on the next thing the suit says.
 const cache = new Map()
 export const clearVoiceCache = () => cache.clear()
 
 export async function resolveVoice(skinKey, synth = globalThis.speechSynthesis) {
-  if (cache.has(skinKey)) return cache.get(skinKey)
+  const cached = cache.get(skinKey)
+  if (cached) return cached
   const voices = await loadVoices(synth)
   const chosen = pickVoice(skinKey, voices, voiceSettings(skinKey)?.name)
-  cache.set(skinKey, chosen)
+  if (chosen) cache.set(skinKey, chosen)
   return chosen
 }
 

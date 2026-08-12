@@ -94,20 +94,14 @@ export function passDeduction(pass, source) {
 
 // Sum across passes of what left one source, respecting the reconcile cutoff
 // (records dated before a "set exact balance" are already baked in).
+// Inclusive on purpose — see the cutoff note in wallet.js/cardBalance: a pass
+// and a reconcile both backdated to the same day share one timestamp, and the
+// pass must still be counted.
 export function passSpentFrom(passes = [], source, since = -Infinity) {
   return passes.reduce((total, p) => {
     const t = toDate(p?.date ?? p?.startDate)?.getTime() ?? 0
-    return t > since ? total + passDeduction(p, source) : total
+    return t >= since ? total + passDeduction(p, source) : total
   }, 0)
-}
-
-// The deposit you can still get back — money temporarily parked in a card
-// deposit across all passes. Surfaced so it reads as "recoverable", not lost.
-export function refundableDeposits(passes = []) {
-  return passes.reduce(
-    (s, p) => s + ((p?.deposit || 0) > 0 && !p?.depositRefunded ? p.deposit : 0),
-    0
-  )
 }
 
 // Every pass, newest first, each with its live numbers attached.

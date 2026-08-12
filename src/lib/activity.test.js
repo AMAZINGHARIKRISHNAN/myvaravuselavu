@@ -83,3 +83,36 @@ describe('buildActivityFeed', () => {
     expect(buildActivityFeed()).toEqual([])
   })
 })
+
+// The All-activity tab used to link every row to '/history' — the page it was
+// already showing — so tapping an expense there did nothing. Rows now carry the
+// record they came from, which is what lets the editor open in place.
+describe('editable activity rows', () => {
+  const expenses = [{ id: 'e1', amount: 900, category: 'Food', paymentMethod: 'Edenred', country: 'IN', date: new Date('2026-08-05'), note: 'sukesan udon' }]
+  const income = [{ id: 'i1', amount: 300000, source: 'Salary', account: 'MUFJ', date: new Date('2026-08-01') }]
+
+  it('marks expenses and income as editable and carries the record', () => {
+    const feed = buildActivityFeed({ expenses, income })
+    const expense = feed.find((r) => r.kind === 'Expense')
+    const inc = feed.find((r) => r.kind === 'Income')
+    expect(expense.edit).toBe('expense')
+    expect(expense.record).toBe(expenses[0])
+    expect(inc.edit).toBe('income')
+    expect(inc.record).toBe(income[0])
+  })
+
+  it('leaves rows owned by another screen to link there', () => {
+    const feed = buildActivityFeed({
+      withdrawals: [{ id: 'w1', amount: 10000, account: 'MUFJ', date: new Date('2026-08-02') }],
+    })
+    expect(feed[0].edit).toBeUndefined()
+    expect(feed[0].to).toBeTruthy()
+  })
+
+  // The row shows an amount, so it must show it in the currency the rest of the
+  // app reads — the udon is yen because Edenred is yen.
+  it('shows a card expense in yen even when the stored country says rupees', () => {
+    const [row] = buildActivityFeed({ expenses })
+    expect(row.country).toBe('JP')
+  })
+})

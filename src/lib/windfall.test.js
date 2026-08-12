@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { windfallProfit, sumWindfalls, splitWindfalls, windfallKind } from './windfall'
+import { windfallProfit, splitWindfalls, windfallKind } from './windfall'
 
 describe('windfallProfit', () => {
   it('is the whole payout when none of it was your money', () => {
@@ -35,9 +35,10 @@ describe('splitWindfalls', () => {
   })
 })
 
-describe('sumWindfalls / windfallKind', () => {
+describe('windfallKind', () => {
   it('adds up profit across entries', () => {
-    expect(sumWindfalls([{ received: 500 }, { received: 1000, cost: 200 }])).toBe(1300)
+    expect([{ received: 500 }, { received: 1000, cost: 200 }]
+      .reduce((s, w) => s + windfallProfit(w), 0)).toBe(1300)
   })
 
   it('falls back to Other for an unknown kind', () => {

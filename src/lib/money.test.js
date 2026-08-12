@@ -64,3 +64,56 @@ describe('income takes its currency from the account it landed in', () => {
     expect(countryForAccount(accounts, 'Gone Bank')).toBe('JP')
   })
 })
+
+// "Edenred is always yen" — asserted as a property of every total in the app,
+// not just of the card balance.
+describe('a fixed-currency method overrules a stored country', () => {
+  const udon = { id: 'u', amount: 900, paymentMethod: 'Edenred', country: 'IN', category: 'Food' }
+  const lunch = { id: 'l', amount: 500, paymentMethod: 'Pasmo', country: 'IN', category: 'Food' }
+  const upi = { id: 'x', amount: 700, paymentMethod: 'UPI', country: 'JP', category: 'Food' }
+
+  it('counts card spending in the yen total, never the rupee one', () => {
+    expect(sumIn([udon, lunch], 'JP')).toBe(1400)
+    expect(sumIn([udon, lunch], 'IN')).toBe(0)
+  })
+
+  it('counts UPI spending in the rupee total, never the yen one', () => {
+    expect(sumIn([upi], 'IN')).toBe(700)
+    expect(sumIn([upi], 'JP')).toBe(0)
+  })
+
+  it('keeps the two sides of a category breakdown apart', () => {
+    expect(sumByCategory([udon, upi], 'JP')).toEqual({ Food: 900 })
+    expect(sumByCategory([udon, upi], 'IN')).toEqual({ Food: 700 })
+  })
+
+  it('filters by the currency the method dictates', () => {
+    expect(inCountry([udon, upi], 'JP')).toEqual([udon])
+    expect(inCountry([udon, upi], 'IN')).toEqual([upi])
+  })
+
+  // An office claim names the card in a different field; the rule is the same.
+  it('applies through paidWith as well as paymentMethod', () => {
+    expect(countryOf({ paidWith: 'Edenred', country: 'IN' })).toBe('JP')
+    expect(countryOf({ paidWith: 'ICICI', country: 'IN' })).toBe('IN')
+  })
+
+  // Cash and bank accounts keep their own country: cash really is both, and an
+  // account's currency is the user's to set.
+  it('leaves cash and bank records alone', () => {
+    expect(countryOf({ paymentMethod: 'Cash', country: 'IN' })).toBe('IN')
+    expect(countryOf({ paymentMethod: 'MUFJ', country: 'JP' })).toBe('JP')
+    expect(countryOf({ account: 'ICICI', country: 'IN' })).toBe('IN')
+  })
+
+  it('still defaults to yen when nothing says otherwise', () => {
+    expect(countryOf({})).toBe('JP')
+    expect(countryOf(null)).toBe('JP')
+  })
+
+  // No total may double-count: whatever a record is, it lands in exactly one.
+  it('puts every record in exactly one currency', () => {
+    const all = [udon, lunch, upi, { id: 'c', amount: 100, paymentMethod: 'Cash', country: 'IN' }]
+    expect(sumIn(all, 'JP') + sumIn(all, 'IN')).toBe(900 + 500 + 700 + 100)
+  })
+})

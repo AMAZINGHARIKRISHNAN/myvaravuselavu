@@ -1,9 +1,13 @@
 import { CATEGORIES } from './constants'
 import { isRouteCategory, parseRoute, parseDestination } from './route'
 
+// Order matters: the first category whose keyword appears wins, so the narrow
+// ones are listed before the broad ones. 'snack' used to sit inside Food, which
+// meant a snack could never be parsed as anything else.
 const CATEGORY_KEYWORDS = {
-  Coffee: ['coffee', 'cafe', 'latte', 'starbucks', 'espresso'],
-  Food: ['food', 'lunch', 'dinner', 'breakfast', 'meal', 'groceries', 'grocery', 'restaurant', 'snack', 'eat'],
+  Snacks: ['snack', 'snacks', 'coffee', 'cafe', 'latte', 'starbucks', 'espresso', 'chocolate', 'biscuit', 'chips', 'ice cream'],
+  Gifts: ['gift', 'gifts', 'present', 'birthday', 'wedding', 'souvenir', 'omiyage'],
+  Food: ['food', 'lunch', 'dinner', 'breakfast', 'meal', 'groceries', 'grocery', 'restaurant', 'eat'],
   Transport: ['transport', 'taxi', 'cab', 'train', 'bus', 'metro', 'uber', 'gas', 'fuel', 'parking', 'toll'],
   Shopping: ['shopping', 'clothes', 'amazon', 'mall', 'shoes', 'electronics'],
   Bills: ['bill', 'bills', 'rent', 'electricity', 'water', 'internet', 'phone', 'subscription', 'insurance'],

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { billsTotal, billsToLog, reconcileDiff, isReconciled, monthTotals } from './audit'
+import { billsTotal, billsToLog, monthTotals } from './audit'
 
 describe('bills', () => {
   const rows = [
@@ -18,27 +18,6 @@ describe('bills', () => {
       { label: 'Rent', amount: 65000 },
       { label: 'Electricity + Gas', amount: 9800 },
     ])
-  })
-})
-
-describe('reconcileDiff', () => {
-  it('is positive when the app thinks you have more than you do', () => {
-    expect(reconcileDiff(50000, '48000')).toBe(2000) // ¥2,000 unlogged spending
-  })
-
-  it('is negative when you actually have more (unlogged income)', () => {
-    expect(reconcileDiff(50000, '52000')).toBe(-2000)
-  })
-
-  it('is null until a number is entered', () => {
-    expect(reconcileDiff(50000, '')).toBe(null)
-    expect(reconcileDiff(50000, 'abc')).toBe(null)
-  })
-
-  it('treats a sub-¥1 gap as reconciled', () => {
-    expect(isReconciled(reconcileDiff(50000, '50000'))).toBe(true)
-    expect(isReconciled(reconcileDiff(50000, '49000'))).toBe(false)
-    expect(isReconciled(null)).toBe(false)
   })
 })
 

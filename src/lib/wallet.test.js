@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { cardBalance, buildHistory } from './wallet'
+import { cardBalance, buildHistory, transferCredit, edenredCreditDue, edenredCreditOp, cardAnchor } from './wallet'
+import { parseDateInput } from './format'
 
 describe('cardBalance', () => {
   it('subtracts card spending from top-ups', () => {
@@ -208,5 +209,229 @@ describe('cash history keeps yen and rupees apart', () => {
     expect(buildHistory('Cash', data).map((r) => r.amount).sort((a, b) => a - b)).toEqual([
       -2000, -500, 5000, 10000,
     ])
+  })
+})
+
+// A reconcile and a purchase that you backdate to the SAME DAY both come out
+// of parseDateInput() stamped at exactly noon. A strictly-greater cutoff threw
+// the purchase away and reported a card richer than it was.
+describe('cardBalance: a reconcile point does not swallow records dated the same day', () => {
+  const noon = (iso) => parseDateInput(iso)
+
+  it('counts a Pasmo expense backdated to the reconcile day', () => {
+    const recharges = [{ id: 'a', card: 'Pasmo', setTo: 5000, amount: 0, date: noon('2026-01-10') }]
+    const expenses = [{ id: 'e', paymentMethod: 'Pasmo', amount: 560, date: noon('2026-01-10') }]
+    expect(cardBalance('Pasmo', recharges, expenses)).toBe(4440)
+  })
+
+  it('counts a top-up backdated to the reconcile day', () => {
+    const recharges = [
+      { id: 'a', card: 'Pasmo', setTo: 5000, amount: 0, date: noon('2026-01-10') },
+      { id: 'b', card: 'Pasmo', setTo: null, amount: 3000, date: noon('2026-01-10') },
+    ]
+    expect(cardBalance('Pasmo', recharges, [])).toBe(8000)
+  })
+
+  it('still ignores everything dated before the reconcile day', () => {
+    const recharges = [{ id: 'a', card: 'Pasmo', setTo: 5000, amount: 0, date: noon('2026-01-10') }]
+    const expenses = [{ id: 'e', paymentMethod: 'Pasmo', amount: 560, date: noon('2026-01-09') }]
+    expect(cardBalance('Pasmo', recharges, expenses)).toBe(5000)
+  })
+
+  it('a live reading still ignores spending logged earlier that same day', () => {
+    const morning = new Date(2026, 0, 10, 10, 30)
+    const evening = new Date(2026, 0, 10, 20, 0)
+    const recharges = [{ id: 'a', card: 'Pasmo', setTo: 5000, amount: 0, date: evening }]
+    const expenses = [{ id: 'e', paymentMethod: 'Pasmo', amount: 560, date: morning }]
+    expect(cardBalance('Pasmo', recharges, expenses)).toBe(5000)
+  })
+
+  it('an older reconcile never adds its correction on top of the newer one', () => {
+    const recharges = [
+      { id: 'old', card: 'Pasmo', setTo: 9000, amount: 9000, date: noon('2026-01-10') },
+      { id: 'new', card: 'Pasmo', setTo: 3000, amount: -6000, date: noon('2026-01-10') },
+    ]
+    // Whichever sorts first wins the anchor; the loser must contribute nothing.
+    expect([3000, 9000]).toContain(cardBalance('Pasmo', recharges, []))
+  })
+})
+
+// A rupee-to-rupee self transfer used to credit nothing. The rule was "an
+// Indian destination gets amountReceived", and a same-currency move has no
+// received figure and no rate — so money left one account and arrived nowhere.
+describe('transferCredit: same-currency self transfers', () => {
+  const inrMove = { amountSent: 833, amountReceived: 0, exchangeRate: 0 }
+
+  it('credits what was sent when both ends share a currency', () => {
+    expect(transferCredit(inrMove, 'IN', 'IN')).toBe(833)
+  })
+
+  it('credited nothing before the source country was known — the bug', () => {
+    expect(transferCredit(inrMove, 'IN')).toBe(0)
+  })
+
+  it('still credits rupees received on a real JP → IN remittance', () => {
+    const remittance = { amountSent: 100000, amountReceived: 55000, exchangeRate: 0.55 }
+    expect(transferCredit(remittance, 'IN', 'JP')).toBe(55000)
+  })
+
+  it('never credits a yen figure to a rupee account when received is blank', () => {
+    // A remittance still in flight: better to credit nothing than ¥100,000
+    // worth of imaginary rupees.
+    expect(transferCredit({ amountSent: 100000, amountReceived: 0 }, 'IN', 'JP')).toBe(0)
+  })
+
+  it('yen-to-yen lands as the yen that were sent, as it always did', () => {
+    expect(transferCredit({ amountSent: 50000 }, 'JP')).toBe(50000)
+    expect(transferCredit({ amountSent: 50000 }, 'JP', 'JP')).toBe(50000)
+  })
+
+  it('both sides of a same-currency move agree exactly', () => {
+    const out = inrMove.amountSent
+    const inn = transferCredit(inrMove, 'IN', 'IN')
+    expect(out).toBe(inn)
+  })
+})
+
+// The company's ¥10,000 Edenred credit. The effect that ran this lived in a
+// component that was later dropped from the Dashboard, so it silently stopped
+// happening and the card sat empty for months. The rule is a tested function
+// now, so it cannot go quiet unnoticed again.
+describe('Edenred monthly company credit', () => {
+  const settings = (edenredLastCredit) => ({ edenredLastCredit })
+
+  it('is not due before the 16th', () => {
+    expect(edenredCreditDue(settings(null), new Date(2026, 7, 15))).toBe(null)
+  })
+
+  it('is due on the 16th', () => {
+    expect(edenredCreditDue(settings(null), new Date(2026, 7, 16))).toBe('2026-08')
+  })
+
+  it('is still due later in the month if the app was not opened', () => {
+    expect(edenredCreditDue(settings(null), new Date(2026, 7, 28))).toBe('2026-08')
+  })
+
+  it('is not due twice in one month', () => {
+    expect(edenredCreditDue(settings('2026-08'), new Date(2026, 7, 20))).toBe(null)
+  })
+
+  it('comes round again next month', () => {
+    expect(edenredCreditDue(settings('2026-08'), new Date(2026, 8, 16))).toBe('2026-09')
+  })
+
+  it('does nothing before settings have loaded', () => {
+    expect(edenredCreditDue(null, new Date(2026, 7, 20))).toBe(null)
+  })
+
+  it('writes a fixed id per month, so two devices credit it once', () => {
+    expect(edenredCreditOp('2026-08').id).toBe('edenred-2026-08')
+    expect(edenredCreditOp('2026-08').id).toBe(edenredCreditOp('2026-08').id)
+  })
+
+  it('credits the card without taking the money from anywhere of yours', () => {
+    const op = edenredCreditOp('2026-08')
+    expect(op.data).toMatchObject({ card: 'Edenred', amount: 10000, paidFrom: null })
+    expect(op.data.date.getMonth()).toBe(7)
+    expect(op.data.date.getDate()).toBe(16)
+  })
+
+  it('the credit actually lands on the card balance', () => {
+    const op = edenredCreditOp('2026-08')
+    expect(cardBalance('Edenred', [{ id: 'x', ...op.data }], [])).toBe(10000)
+  })
+
+  it('and spending with it comes straight back off', () => {
+    const op = edenredCreditOp('2026-08')
+    const expenses = [
+      { id: 'e', amount: 850, paymentMethod: 'Edenred', country: 'JP', date: new Date(2026, 7, 18) },
+    ]
+    expect(cardBalance('Edenred', [{ id: 'x', ...op.data }], expenses)).toBe(9150)
+  })
+})
+
+// The history sheet exists to explain a balance. That only works if its own
+// arithmetic lands on the same number — a Pasmo card reading ¥310 above a list
+// of transactions summing to −¥190 is worse than showing nothing, because the
+// user cannot tell which figure to believe.
+describe('a card history explains its balance', () => {
+  const d = (n) => new Date(2026, 7, n, 12)
+  const sheetTotal = (card, data, anchor) => {
+    const rows = buildHistory(card, data)
+    const counts = (r) => !anchor?.since || !r.date || r.date >= anchor.since
+    return (anchor?.opening ?? 0) + rows.filter(counts).reduce((s, r) => s + r.amount, 0)
+  }
+
+  it('adds up to the balance when a reconcile has restarted the card', () => {
+    const recharges = [
+      { id: 'r1', card: 'Pasmo', amount: 3000, date: d(1) },
+      { id: 'r2', card: 'Pasmo', amount: -1500, setTo: 310, date: d(5) },
+    ]
+    const expenses = [
+      { id: 'e1', amount: 1190, paymentMethod: 'Pasmo', date: d(2) },
+      { id: 'e2', amount: 500, paymentMethod: 'Pasmo', date: d(3) },
+    ]
+    const data = { recharges, expenses }
+    const anchor = cardAnchor('Pasmo', recharges)
+    expect(anchor.opening).toBe(310)
+    expect(cardBalance('Pasmo', recharges, expenses)).toBe(310)
+    expect(sheetTotal('Pasmo', data, anchor)).toBe(310)
+  })
+
+  it('keeps agreeing once new spending lands after the reconcile', () => {
+    const recharges = [
+      { id: 'r1', card: 'Pasmo', amount: 3000, date: d(1) },
+      { id: 'r2', card: 'Pasmo', amount: -1500, setTo: 310, date: d(5) },
+      { id: 'r3', card: 'Pasmo', amount: 2000, date: d(7) },
+    ]
+    const expenses = [
+      { id: 'e1', amount: 1190, paymentMethod: 'Pasmo', date: d(2) },
+      { id: 'e2', amount: 280, paymentMethod: 'Pasmo', date: d(8) },
+    ]
+    const data = { recharges, expenses }
+    const anchor = cardAnchor('Pasmo', recharges)
+    expect(cardBalance('Pasmo', recharges, expenses)).toBe(310 + 2000 - 280)
+    expect(sheetTotal('Pasmo', data, anchor)).toBe(cardBalance('Pasmo', recharges, expenses))
+  })
+
+  it('agrees when the card was never reconciled at all', () => {
+    const recharges = [{ id: 'r1', card: 'Pasmo', amount: 3000, date: d(1) }]
+    const expenses = [{ id: 'e1', amount: 1190, paymentMethod: 'Pasmo', date: d(2) }]
+    const data = { recharges, expenses }
+    expect(cardAnchor('Pasmo', recharges)).toBe(null)
+    expect(sheetTotal('Pasmo', data, null)).toBe(cardBalance('Pasmo', recharges, expenses))
+  })
+
+  it('uses the newest reconcile when there are several', () => {
+    const recharges = [
+      { id: 'r1', card: 'Pasmo', amount: 0, setTo: 5000, date: d(1) },
+      { id: 'r2', card: 'Pasmo', amount: 0, setTo: 310, date: d(5) },
+    ]
+    const expenses = [{ id: 'e1', amount: 100, paymentMethod: 'Pasmo', date: d(6) }]
+    const data = { recharges, expenses }
+    const anchor = cardAnchor('Pasmo', recharges)
+    expect(anchor.opening).toBe(310)
+    expect(sheetTotal('Pasmo', data, anchor)).toBe(cardBalance('Pasmo', recharges, expenses))
+  })
+
+  // The reconcile becomes the STARTING figure, so it must not also appear as a
+  // movement — that was the double count that made the two disagree.
+  it('does not list the reconcile it started from as a row', () => {
+    const recharges = [
+      { id: 'r1', card: 'Pasmo', amount: 3000, date: d(1) },
+      { id: 'r2', card: 'Pasmo', amount: -1500, setTo: 310, date: d(5) },
+    ]
+    const rows = buildHistory('Pasmo', { recharges, expenses: [] })
+    expect(rows.some((r) => r.recordId === 'r2')).toBe(false)
+    expect(rows.some((r) => r.recordId === 'r1')).toBe(true)
+  })
+
+  it('handles a top-up written before records had ids', () => {
+    const recharges = [
+      { card: 'Pasmo', amount: 3000, date: d(1) },
+      { card: 'Pasmo', amount: 0, setTo: 310, date: d(5) },
+    ]
+    expect(cardBalance('Pasmo', recharges, [])).toBe(310)
+    expect(cardAnchor('Pasmo', recharges).opening).toBe(310)
   })
 })

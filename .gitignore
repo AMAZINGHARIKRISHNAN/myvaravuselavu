@@ -23,6 +23,15 @@ firebase-debug.log
 firebase-debug.*.log
 ui-debug.log
 
+# Personal documents dropped in for testing — payslips, bank statements,
+# receipts. These carry your name, employee number, employer and salary, and
+# git never forgets: once one is committed it stays in the history even after
+# the file is deleted.
+*.pdf
+*statement*
+*payslip*
+*明細*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

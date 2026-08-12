@@ -131,7 +131,7 @@ export default function Cash() {
       <div className="flex items-center gap-2">
         <Link
           to="/balances"
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 transition-transform active:scale-90 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
+          className="flex tap-target h-8 w-8 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 transition-transform active:scale-90 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
           aria-label="Back to balances"
         >
           <ChevronLeft size={16} />
@@ -837,7 +837,7 @@ function CountSheet({ country, initialStash, knownStashes, position, onSave, onC
                 type="button"
                 onClick={() => bump(value, -1)}
                 aria-label={`One less ${value}`}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-base text-gray-600 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800/50 dark:text-gray-300"
+                className="flex tap-target h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-base text-gray-600 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800/50 dark:text-gray-300"
               >
                 −
               </button>
@@ -854,7 +854,7 @@ function CountSheet({ country, initialStash, knownStashes, position, onSave, onC
                 type="button"
                 onClick={() => bump(value, 1)}
                 aria-label={`One more ${value}`}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-base text-gray-600 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800/50 dark:text-gray-300"
+                className="flex tap-target h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-base text-gray-600 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800/50 dark:text-gray-300"
               >
                 +
               </button>

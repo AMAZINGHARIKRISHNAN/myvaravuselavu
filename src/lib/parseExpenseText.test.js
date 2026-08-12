@@ -5,7 +5,7 @@ describe('parseExpenseText', () => {
   it('parses a simple "category amount" phrase', () => {
     const result = parseExpenseText('coffee 450')
     expect(result.amount).toBe(450)
-    expect(result.category).toBe('Coffee')
+    expect(result.category).toBe('Snacks')
     expect(result.note).toBe('coffee')
   })
 
@@ -22,7 +22,8 @@ describe('parseExpenseText', () => {
   it('prefers standalone numbers over digits glued to words', () => {
     const result = parseExpenseText('7-eleven snack 450')
     expect(result.amount).toBe(450)
-    expect(result.category).toBe('Food')
+    // 'snack' used to be a Food keyword; it has its own category now.
+    expect(result.category).toBe('Snacks')
   })
 
   it('falls back to the first number when none stand alone', () => {

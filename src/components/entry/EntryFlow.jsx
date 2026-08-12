@@ -15,7 +15,8 @@ import { PREPAID_CARDS } from '../../lib/wallet'
 import { recordAmount, topAmounts } from '../../lib/quickAmounts'
 import { normalizeStore, recordStore, topStores } from '../../lib/stores'
 import { isRouteCategory, normalizePlace, recentPlaces, recordPlaces, swapRoute } from '../../lib/route'
-import { CATEGORIES, CATEGORY_ICONS } from '../../lib/constants'
+import { fundingSources, countryOf } from '../../lib/money'
+import { CATEGORIES, CATEGORY_ICONS, methodCountry } from '../../lib/constants'
 import { groupOwner } from '../../lib/sharedGroups'
 
 const STEPS = ['amount', 'category', 'payment', 'confirm']
@@ -36,10 +37,9 @@ function loadLastPayment() {
   }
 }
 
-export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
+export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, onSaved }) {
   const { settings } = useSettings()
   const { add, update } = useCollectionWriters('expenses')
-  const { add: addFriendPurchase } = useCollectionWriters('friendPurchases')
   // Card top-ups are NOT expenses — they move money bank → prepaid card. The
   // spending happens later, when the card pays for something.
   const { add: addRecharge } = useCollectionWriters('pasmoRecharges')
@@ -65,7 +65,20 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
   const [paymentMethod, setPaymentMethod] = useState(
     initial?.paymentMethod || lastPayment?.paymentMethod || null
   )
-  const [country, setCountry] = useState(initial?.country || lastPayment?.country || null)
+  // A remembered method that can only hold one currency decides the country
+  // itself. Remembering the pair as-saved is what let a stale 'IN' ride along
+  // with a yen-only card: the method was preselected, the country came from the
+  // same memory, and a confirm-tap never corrected it.
+  const [country, setCountry] = useState(
+    // countryOf first, so EDITING a record shows the currency it is actually
+    // read as — an Edenred expense stored as 'IN' opens as the yen it is,
+    // and saving puts the right value back rather than writing the old one out
+    // again.
+    (initial && countryOf(initial)) ||
+      (lastPayment?.paymentMethod && methodCountry(lastPayment.paymentMethod)) ||
+      lastPayment?.country ||
+      null
+  )
   const [note, setNote] = useState(initial?.note || '')
   // Where the money was spent. Free text (shops change, no fixed list), but
   // backed by chips + a datalist of your own past shops so it stays one tap
@@ -268,8 +281,9 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
       setStepIndex(STEPS.indexOf('confirm'))
     } else {
       // A prefilled expense method (Pasmo, UPI…) isn't a valid funding source —
-      // only cash or a real account can pay for a top-up.
-      const sources = ['Cash', ...accounts.map((a) => a.label)]
+      // only cash or a real YEN account can pay for a top-up. An Indian account
+      // here took rupees off it while the card gained yen.
+      const sources = fundingSources(accounts, 'JP')
       if (!sources.includes(paymentMethod)) setPaymentMethod(null)
       goNext()
     }
@@ -303,7 +317,7 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
         note: note.trim(),
       })
       celebrate()
-      recordAmount(amountNum)
+      recordAmount(amountNum, country || 'JP')
       toast(`🏧 ${formatByCountry(amountNum, country || 'JP')} withdrawn from ${paymentMethod} → cash`)
       onSaved?.()
       onClose()
@@ -413,7 +427,7 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
         }))
       )
       celebrate()
-      recordAmount(splitTotal)
+      recordAmount(splitTotal, country || 'JP')
       localStorage.setItem(
         LAST_PAYMENT_KEY,
         JSON.stringify({ paymentMethod, country: country || 'JP' })
@@ -452,7 +466,7 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
         date: parseDateInput(dateStr),
       })
       celebrate()
-      recordAmount(amountNum)
+      recordAmount(amountNum, country || 'JP')
       toast(
         `${isCredit ? '➕' : '➖'} ${formatByCountry(amountNum, country || 'JP')} ${
           isCredit ? 'credited to' : 'debited from'
@@ -487,7 +501,7 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
         note: note.trim(),
       })
       celebrate()
-      recordAmount(amountNum)
+      recordAmount(amountNum, country || 'JP')
       toast(
         `${topUpMeta?.emoji || '💳'} ${formatJPY(amountNum)} loaded onto ${topUpCard}${
           paidFrom ? ` · out of ${paidFrom}` : ''
@@ -571,12 +585,30 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
         }
       } else {
         if (forFriend) payload.friend = friendCalcs.map((f) => f.name.trim()).join(', ')
-        let ref
+        // One Friend-ledger row per friend, so each person's debt and
+        // profit/loss is tracked separately in the Friends tab.
+        // cost = their slice of this expense; paid = same (that money already
+        // left your pocket as this expense).
+        const friendRow = (f, expenseId) => ({
+          item: note.trim() || payload.store || category || 'Expense',
+          store: payload.store,
+          friend: f.name.trim(),
+          country: payload.country,
+          cost: f.share,
+          paid: f.share, // already paid — it went out as this expense
+          due: f.due, // what they promised to give back
+          received: 0, // nothing collected yet
+          date: payload.date,
+          note: payload.store
+            ? `From expense · ${category} · ${payload.store}`
+            : `From expense · ${category}`,
+          expenseId, // link back to the expense record
+        })
         if (whoFor === 'group' && selectedGroup) {
           // Mirror into the group ledger: you fronted the full amount, the
           // group splits it equally. ONE atomic commit creates both sides
           // pre-linked — a dropped connection can't leave a half-pair.
-          const ids = await batchOps([
+          await batchOps([
             { op: 'set', name: 'expenses', data: (ids) => ({ ...payload, groupEntryId: ids[1] }) },
             {
               op: 'set',
@@ -598,33 +630,25 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
               }),
             },
           ])
-          ref = { id: ids[0] }
+        } else if (forFriend) {
+          // ONE atomic commit for the expense and every friend row it creates.
+          // Writing the expense first and then looping meant a failure partway
+          // through left some friends recorded and not others — and reported
+          // "Could not save" for an expense that was already saved, so tapping
+          // the button again logged it a second time.
+          await batchOps([
+            { op: 'set', name: 'expenses', data: payload },
+            ...friendCalcs.map((f) => ({
+              op: 'set',
+              name: 'friendPurchases',
+              data: (created) => friendRow(f, created[0]),
+            })),
+          ])
         } else {
-          ref = await add(payload)
-        }
-        if (forFriend) {
-          // One Friend-ledger entry per friend, so each person's debt and
-          // profit/loss is tracked separately in the Friends tab.
-          // cost = their slice of this expense; paid = same (that money
-          // already left your pocket as this expense).
-          for (const f of friendCalcs) {
-            await addFriendPurchase({
-              item: note.trim() || payload.store || category || 'Expense',
-              store: payload.store,
-              friend: f.name.trim(),
-              country: payload.country,
-              cost: f.share,
-              paid: f.share, // already paid — it went out as this expense
-              due: f.due, // what they promised to give back
-              received: 0, // nothing collected yet
-              date: payload.date,
-              note: payload.store ? `From expense · ${category} · ${payload.store}` : `From expense · ${category}`,
-              expenseId: ref.id, // link back to the expense record
-            })
-          }
+          await add(payload)
         }
         celebrate()
-        recordAmount(payload.amount)
+        recordAmount(payload.amount, payload.country)
       }
       localStorage.setItem(
         LAST_PAYMENT_KEY,
@@ -679,7 +703,7 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 transition-transform active:scale-90 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
+          className="flex tap-target h-8 w-8 items-center justify-center rounded-full border border-gray-300/60 bg-gray-100 text-gray-500 transition-transform active:scale-90 dark:border-transparent dark:bg-neutral-800 dark:text-gray-400"
         >
           ✕
         </button>
@@ -698,8 +722,17 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
         ))}
       </div>
 
+      {/* The currency is not settled until the payment step, but the last
+          entry's country is a good guess — so a run of rupee expenses shows ₹
+          and an un-dimmed decimal point from the very first keystroke. */}
       {step === 'amount' && (
-        <Keypad value={amount} onChange={setAmount} onNext={goNext} quickAmounts={topAmounts()} />
+        <Keypad
+          value={amount}
+          onChange={setAmount}
+          onNext={goNext}
+          quickAmounts={topAmounts(3, country || 'JP')}
+          country={country || 'JP'}
+        />
       )}
 
       {step === 'category' && (
@@ -803,6 +836,24 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
               >
                 🎉 Bonus received
               </button>
+
+              {/* Your own money changing place. It belongs beside "Withdrew
+                  cash" and the card top-ups because it is the same idea —
+                  and it is the only one of them that can go in any direction. */}
+              {onMoveMoney && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (navigator.vibrate) navigator.vibrate(8)
+                  // The amount was typed on step 1 — carry it across rather
+                  // than making it be typed a second time.
+                  onMoveMoney({ amount: amountNum, dateStr })
+                }}
+                className="w-full rounded-2xl border border-gray-300/60 bg-gray-100 py-3 text-sm font-medium text-gray-800 transition-transform duration-75 active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800 dark:text-gray-100"
+              >
+                ↔ Move money between my accounts
+              </button>
+              )}
             </div>
           )}
         </>
@@ -920,7 +971,7 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
           </h2>
           <div className="w-full max-w-xs mx-auto space-y-3">
             <div className="grid grid-cols-2 gap-2.5">
-              {['Cash', ...accounts.map((a) => a.label)].map((label) => (
+              {fundingSources(accounts, 'JP').map((label) => (
                 <button
                   key={label}
                   type="button"
@@ -1466,7 +1517,7 @@ export default function EntryFlow({ initial, initialDate, onClose, onSaved }) {
                     setFromPlace(swapped.fromPlace)
                     setToPlace(swapped.toPlace)
                   }}
-                  className="mb-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-300/60 text-gray-500 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800 dark:text-gray-300"
+                  className="mb-1 flex tap-target h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-300/60 text-gray-500 transition-transform active:scale-90 touch-manipulation dark:border-transparent dark:bg-neutral-800 dark:text-gray-300"
                 >
                   <ArrowLeftRight size={15} aria-hidden="true" />
                 </button>

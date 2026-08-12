@@ -6,9 +6,14 @@
     <link rel="icon" type="image/png" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <!-- maximum-scale/user-scalable stop accidental pinch-zoom in the
-         installed (home-screen) app, which is how this app is used. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- Zoom stays ENABLED. This app is full of ¥ figures at 11px, and being
+         unable to magnify a number in a finance app is a real barrier, not a
+         theoretical one. `user-scalable=no` also never worked on iOS — Safari
+         has ignored it since iOS 10 — so it only ever penalised Android.
+         Accidental double-tap zoom is handled properly instead, by
+         `touch-action: manipulation` on every control (Tailwind's
+         `touch-manipulation`, which this app already uses throughout). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#111827" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

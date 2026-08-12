@@ -5,6 +5,7 @@ import { useCollection } from '../hooks/useCollection'
 import { useCollectionWriters } from '../hooks/useCollectionWriters'
 import { useBatchOps } from '../hooks/useBatchOps'
 import { useSettings } from '../hooks/useSettings'
+import { useUndoableDelete } from '../hooks/useUndoableDelete'
 import { useToast } from '../context/ToastContext'
 import { formatJPY, toDate, toDateInputValue, parseDateInput } from '../lib/format'
 import {
@@ -22,6 +23,7 @@ import {
 } from '../lib/commute'
 import { cardBalance } from '../lib/wallet'
 import { passesWithResults, passCovering } from '../lib/passes'
+import { fundingSources } from '../lib/money'
 import BottomSheet from '../components/ui/BottomSheet'
 import CollapsibleSection from '../components/ui/CollapsibleSection'
 import FloatingActionButton from '../components/ui/FloatingActionButton'
@@ -261,33 +263,39 @@ export default function Commute() {
   // Calendar: empty days get MARKED first, then one OK logs the full
   // ¥fare×2 commute on every marked day. Logged days open for editing.
   const [daySheetKey, setDaySheetKey] = useState(null)
+  // Marked days go in as few commits as possible — instant even for a whole
+  // month. Chunked because Firestore caps a commit at 500 operations and a day
+  // costs up to four; selecting across several months used to sail past that
+  // and reject the whole write. What has to be atomic is a day's trip and its
+  // expense mirror, and those always share a chunk.
+  const DAYS_PER_COMMIT = 100
   const logDays = async (dayKeys) => {
-    // All marked days land in ONE commit — instant even for a whole month,
-    // and all-or-nothing if the connection drops mid-way.
-    const ops = []
-    for (const k of dayKeys) {
-      const [y, m, d] = k.split('-').map(Number)
-      const day = new Date(y, m - 1, d, 12)
-      for (const leg of COMMUTE_LEGS) {
-        ops.push(
-          ...tripPairOps(
-            {
-              date: day,
-              dateKey: k,
-              leg: leg.key,
-              amount: cfg.fare,
-              method: cfg.method || 'Pasmo',
-              note: '',
-              reimbursable: true,
-              claimId: null,
-            },
-            `${k}-${leg.key}`,
-            ops.length
+    for (let i = 0; i < dayKeys.length; i += DAYS_PER_COMMIT) {
+      const ops = []
+      for (const k of dayKeys.slice(i, i + DAYS_PER_COMMIT)) {
+        const [y, m, d] = k.split('-').map(Number)
+        const day = new Date(y, m - 1, d, 12)
+        for (const leg of COMMUTE_LEGS) {
+          ops.push(
+            ...tripPairOps(
+              {
+                date: day,
+                dateKey: k,
+                leg: leg.key,
+                amount: cfg.fare,
+                method: cfg.method || 'Pasmo',
+                note: '',
+                reimbursable: true,
+                claimId: null,
+              },
+              `${k}-${leg.key}`,
+              ops.length
+            )
           )
-        )
+        }
       }
+      if (ops.length > 0) await batchOps(ops)
     }
-    await batchOps(ops)
     toast(
       `🚌 ${dayKeys.length} day${dayKeys.length === 1 ? '' : 's'} marked as commute · ${formatJPY(
         dayKeys.length * (cfg.fare || 0) * 2
@@ -370,6 +378,7 @@ export default function Commute() {
         todayKey={todayKey}
         onOpenDay={setDaySheetKey}
         onLogDays={logDays}
+        onLogFailed={() => toast('⚠️ Could not log those days — check your connection and try again')}
       />
 
       {/* ---- Claiming lives on the Reimbursements page ----
@@ -476,8 +485,16 @@ export default function Commute() {
 function PassCard({ passes, trips, fare, onAdd, onUpdate, onDelete }) {
   const { toast } = useToast()
   const [showSheet, setShowSheet] = useState(false)
-  const [confirmId, setConfirmId] = useState(null)
-  const rows = useMemo(() => passesWithResults(passes, trips, fare), [passes, trips, fare])
+  // Deleting a pass is a single record, so it uses the same undo toast as every
+  // other single-record delete in this app. It used to be tap-the-bin-twice —
+  // a third pattern, and one whose armed state never timed out, so arming it
+  // and coming back minutes later meant one tap destroyed the pass with no way
+  // back. The two-step survives only where a delete cascades (see Groups).
+  const { pendingIds, requestDelete } = useUndoableDelete(onDelete, 'Pass')
+  const rows = useMemo(
+    () => passesWithResults(passes, trips, fare).filter((p) => !pendingIds.has(p.id)),
+    [passes, trips, fare, pendingIds]
+  )
 
   return (
     <div className="card p-4 space-y-3">
@@ -522,15 +539,9 @@ function PassCard({ passes, trips, fare, onAdd, onUpdate, onDelete }) {
                 </span>
                 <button
                   type="button"
-                  onClick={() =>
-                    confirmId === p.id
-                      ? (onDelete(p.id), setConfirmId(null), toast('🗑 Pass deleted'))
-                      : setConfirmId(p.id)
-                  }
-                  aria-label="Delete pass"
-                  className={`shrink-0 p-1 transition-transform active:scale-90 ${
-                    confirmId === p.id ? 'text-red-500' : 'text-gray-400 hover:text-red-500'
-                  }`}
+                  onClick={() => requestDelete(p.id)}
+                  aria-label={`Delete ${p.label || 'commuter pass'}`}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-gray-400 transition-transform active:scale-90 hover:text-red-500 touch-manipulation"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -544,18 +555,12 @@ function PassCard({ passes, trips, fare, onAdd, onUpdate, onDelete }) {
                 />
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {confirmId === p.id ? (
-                  <span className="font-medium text-red-500">Tap the bin again to delete</span>
-                ) : (
-                  <>
-                    {r.days} day{r.days === 1 ? '' : 's'} × {formatJPY(r.perDay)} ={' '}
-                    {formatJPY(r.claimable)} claimable vs {formatJPY(r.cost)} paid
-                    {p.paidFrom ? ` from ${p.paidFrom}` : ''}
-                    {!earned && r.breakEvenDays
-                      ? ` · ${Math.max(0, r.breakEvenDays - r.days)} more to break even`
-                      : ' · every further day is profit'}
-                  </>
-                )}
+                {r.days} day{r.days === 1 ? '' : 's'} × {formatJPY(r.perDay)} ={' '}
+                {formatJPY(r.claimable)} claimable vs {formatJPY(r.cost)} paid
+                {p.paidFrom ? ` from ${p.paidFrom}` : ''}
+                {!earned && r.breakEvenDays
+                  ? ` · ${Math.max(0, r.breakEvenDays - r.days)} more to break even`
+                  : ' · every further day is profit'}
               </p>
 
               {/* Refundable card deposit — recoverable money, with a one-tap
@@ -605,12 +610,11 @@ function PassCard({ passes, trips, fare, onAdd, onUpdate, onDelete }) {
   )
 }
 
-// Where the money to buy a pass came from: cash or a bank account. Transit
+// Where the money to buy a pass came from: cash or a YEN bank account. Transit
 // cards aren't offered — you don't fund a pass out of a card's stored fare.
-function paymentSources(settings) {
-  const accounts = (settings?.accounts || []).filter((a) => a.country === 'JP').map((a) => a.label)
-  return ['Cash', ...accounts]
-}
+// The JP-only rule now lives in money.js, because three other pickers were
+// missing it and could fund yen out of an Indian account.
+const paymentSources = (settings) => fundingSources(settings?.accounts, 'JP')
 
 // A row of pill buttons for choosing where money came from.
 function SourcePills({ value, onChange, sources }) {
@@ -877,7 +881,7 @@ function PasmoCard({ balance, fare, loading, recharges, onAdd, onDelete }) {
                       toast('🗑 Recharge removed')
                     }}
                     aria-label="Delete recharge"
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
                   >
                     <Trash2 size={13} />
                   </button>
@@ -904,7 +908,7 @@ function PasmoCard({ balance, fare, loading, recharges, onAdd, onDelete }) {
 function RechargeSheet({ onAdd, onClose }) {
   const { toast } = useToast()
   const { settings } = useSettings()
-  const accounts = settings?.accounts || []
+  const sources = paymentSources(settings)
   const [amount, setAmount] = useState('')
   const [paidFrom, setPaidFrom] = useState('Cash')
   const [date, setDate] = useState(toDateInputValue())
@@ -971,7 +975,7 @@ function RechargeSheet({ onAdd, onClose }) {
       <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
         <p>Paid from (that account's balance goes down)</p>
         <div className="flex flex-wrap gap-2">
-          {['Cash', ...accounts.map((a) => a.label)].map((label) => (
+          {sources.map((label) => (
             <button
               key={label}
               type="button"
@@ -1005,13 +1009,22 @@ function RechargeSheet({ onAdd, onClose }) {
 // Month grid: each day shows whether the commute is logged (and its total).
 // Empty days: tap to MARK (dashed outline), tap OK to log ¥fare×2 on every
 // marked day at once. Colored days: tap to open and edit that day.
-function CalendarCard({ cfg, trips, pendingClaimIds, approvedClaimIds, todayKey, onOpenDay, onLogDays }) {
+function CalendarCard({ cfg, trips, pendingClaimIds, approvedClaimIds, todayKey, onOpenDay, onLogDays, onLogFailed }) {
   const [month, setMonth] = useState(() => {
     const n = new Date()
     return new Date(n.getFullYear(), n.getMonth(), 1)
   })
   const [marked, setMarked] = useState(() => new Set())
   const [saving, setSaving] = useState(false)
+
+  // Paging the calendar drops the selection. The confirm bar can only ever
+  // show a count for days you can actually see, so carrying marks into a month
+  // you have navigated away from meant tapping OK logged days you had lost
+  // sight of — and enough of them to overflow a single commit.
+  const goToMonth = (next) => {
+    setMonth(next)
+    setMarked(new Set())
+  }
 
   const byDay = useMemo(() => {
     const map = new Map()
@@ -1040,9 +1053,9 @@ function CalendarCard({ cfg, trips, pendingClaimIds, approvedClaimIds, todayKey,
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+            onClick={() => goToMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
             aria-label="Previous month"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition-all hover:text-gray-900 active:scale-90 touch-manipulation dark:text-gray-400 dark:hover:text-gray-100"
+            className="flex tap-target h-8 w-8 items-center justify-center rounded-full text-gray-500 transition-all hover:text-gray-900 active:scale-90 touch-manipulation dark:text-gray-400 dark:hover:text-gray-100"
           >
             ‹
           </button>
@@ -1051,9 +1064,9 @@ function CalendarCard({ cfg, trips, pendingClaimIds, approvedClaimIds, todayKey,
           </span>
           <button
             type="button"
-            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+            onClick={() => goToMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
             aria-label="Next month"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-500 transition-all hover:text-gray-900 active:scale-90 touch-manipulation dark:text-gray-400 dark:hover:text-gray-100"
+            className="flex tap-target h-8 w-8 items-center justify-center rounded-full text-gray-500 transition-all hover:text-gray-900 active:scale-90 touch-manipulation dark:text-gray-400 dark:hover:text-gray-100"
           >
             ›
           </button>
@@ -1142,6 +1155,10 @@ function CalendarCard({ cfg, trips, pendingClaimIds, approvedClaimIds, todayKey,
               try {
                 await onLogDays([...marked].sort())
                 setMarked(new Set())
+              } catch {
+                // Without this the promise rejected into nothing: the button
+                // simply re-enabled itself and the days silently never logged.
+                onLogFailed()
               } finally {
                 setSaving(false)
               }
@@ -1229,12 +1246,12 @@ function DaySheet({ dayKey, cfg, trips, pendingClaimIds, approvedClaimIds, onLog
               <span className="shrink-0 text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
                 {formatJPY(trip.amount)}
               </span>
-              <div className="flex shrink-0">
+              <div className="flex shrink-0 gap-0.5">
                 <button
                   type="button"
                   onClick={() => onEditTrip(trip)}
                   aria-label={`Edit ${leg.label}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
                 >
                   <Pencil size={14} />
                 </button>
@@ -1242,7 +1259,7 @@ function DaySheet({ dayKey, cfg, trips, pendingClaimIds, approvedClaimIds, onLog
                   type="button"
                   onClick={() => onDeleteTrip(trip)}
                   aria-label={`Delete ${leg.label}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -1280,12 +1297,12 @@ function DaySheet({ dayKey, cfg, trips, pendingClaimIds, approvedClaimIds, onLog
               <span className="shrink-0 text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
                 {formatJPY(t.amount)}
               </span>
-              <div className="flex shrink-0">
+              <div className="flex shrink-0 gap-0.5">
                 <button
                   type="button"
                   onClick={() => onEditTrip(t)}
                   aria-label={`Edit ${disp.label}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
                 >
                   <Pencil size={14} />
                 </button>
@@ -1293,7 +1310,7 @@ function DaySheet({ dayKey, cfg, trips, pendingClaimIds, approvedClaimIds, onLog
                   type="button"
                   onClick={() => onDeleteTrip(t)}
                   aria-label={`Delete ${disp.label}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
                 >
                   <Trash2 size={14} />
                 </button>

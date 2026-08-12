@@ -7,7 +7,9 @@ import { useAccountBalances } from '../hooks/useAccountBalances'
 import { useSettings } from '../hooks/useSettings'
 import { useToast } from '../context/ToastContext'
 import { formatByCountry, formatJPY, toDateInputValue, parseDateInput } from '../lib/format'
-import { PREPAID_CARDS, cardBalance } from '../lib/wallet'
+import { PREPAID_CARDS, cardBalance, cardAnchor } from '../lib/wallet'
+import { fundingSources } from '../lib/money'
+import { cutoffFor as cutoffForAccount } from '../lib/balances'
 import { cashPosition } from '../lib/cash'
 import BottomSheet from '../components/ui/BottomSheet'
 import Skeleton from '../components/ui/Skeleton'
@@ -104,7 +106,7 @@ export default function Balances() {
       {/* ---- Bank accounts ---- */}
       <div className="card divide-y divide-gray-200 overflow-hidden dark:divide-white/5">
         {balances.map((a) => (
-          <button key={a.id} type="button" onClick={() => setHistoryOf({ name: a.label, country: a.country, since: a.openingBalanceAt })} className={rowClass}>
+          <button key={a.id} type="button" onClick={() => setHistoryOf({ name: a.label, country: a.country, since: cutoffForAccount(a), opening: a.openingBalance ?? 0 })} className={rowClass}>
             <span aria-hidden="true" className="text-lg">{FLAGS[a.country] || '🏦'}</span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{a.label}</span>
@@ -153,7 +155,17 @@ export default function Balances() {
             <div key={card.name} className="flex items-center">
               <button
                 type="button"
-                onClick={() => setHistoryOf({ name: card.name, country: 'JP' })}
+                // The card's own reconcile point, so the sheet can mark what
+                // the balance skips and its total lands on the same figure.
+                onClick={() => {
+                  const anchor = cardAnchor(card.name, recharges.data)
+                  setHistoryOf({
+                    name: card.name,
+                    country: 'JP',
+                    since: anchor?.since ?? null,
+                    opening: anchor?.opening ?? 0,
+                  })
+                }}
                 className={`${rowClass} min-w-0 flex-1`}
               >
                 <span aria-hidden="true" className="text-lg">{card.emoji}</span>
@@ -175,7 +187,7 @@ export default function Balances() {
                 type="button"
                 onClick={() => setTopUpCard({ name: card.name, balance })}
                 aria-label={`Top up ${card.name}`}
-                className="mr-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-transform active:scale-90 touch-manipulation dark:bg-indigo-500"
+                className="mr-3 flex tap-target h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-transform active:scale-90 touch-manipulation dark:bg-indigo-500"
               >
                 <Plus size={15} />
               </button>
@@ -269,7 +281,10 @@ export default function Balances() {
 // the real spending, so nothing double-counts.
 function TopUpSheet({ card, balance = 0, onAdd, onClose }) {
   const { settings } = useSettings()
-  const accounts = settings?.accounts || []
+  // A card holds yen, so only yen can be loaded onto it. Listing every
+  // account here let a ¥3,000 top-up be funded from an Indian bank: ₹3,000 out,
+  // ¥3,000 in, and the difference was money that never existed.
+  const sources = fundingSources(settings?.accounts, 'JP')
   // Company cards (Edenred) are loaded by the employer — never from the
   // user's own money, so there's no "paid from" and nothing gets deducted.
   const isCompanyCard = PREPAID_CARDS.find((c) => c.name === card)?.company
@@ -393,7 +408,7 @@ function TopUpSheet({ card, balance = 0, onAdd, onClose }) {
         <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
           <p>Paid from (that account's balance goes down)</p>
           <div className="flex flex-wrap gap-2">
-            {['Cash', ...accounts.map((a) => a.label)].map((label) => (
+            {sources.map((label) => (
               <button
                 key={label}
                 type="button"

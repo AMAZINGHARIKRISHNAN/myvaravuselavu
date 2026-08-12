@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { closeAllLiveData } from '../lib/liveData'
 import { auth } from '../lib/firebase'
 
 const AuthContext = createContext(null)
@@ -17,7 +18,13 @@ export function AuthProvider({ children }) {
   }, [])
 
   const login = (email, password) => signInWithEmailAndPassword(auth, email, password)
-  const logout = () => signOut(auth)
+  const logout = async () => {
+    // Close every warm listener FIRST: they outlive their last consumer now, so
+    // signing out while they idle would leave them reading documents the user
+    // no longer has permission for.
+    closeAllLiveData()
+    await signOut(auth)
+  }
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>

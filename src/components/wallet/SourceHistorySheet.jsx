@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Trash2 } from 'lucide-react'
-import { buildHistory } from '../../lib/wallet'
-import { formatByCountry, startOfDay } from '../../lib/format'
+import { buildHistory, PREPAID_CARDS } from '../../lib/wallet'
+import { formatByCountry } from '../../lib/format'
 import BottomSheet from '../ui/BottomSheet'
 
 // Everything that ever touched ONE source — a bank account, a prepaid card,
@@ -20,12 +20,62 @@ export default function SourceHistorySheet({ source, data, onUndo, onUndoEntry, 
   // Anything dated before the reconcile point is real history but doesn't move
   // the balance — the number restarted from the figure you typed. Saying so
   // here is what turns "why doesn't my salary show up?" into an answer.
-  const since = source.since ? startOfDay(source.since) : null
+  // The cutoff arrives already resolved. It used to be re-derived here with
+  // startOfDay, which was right for a bank account and wrong for a card: a card
+  // restarts from the exact moment its balance was set, so rounding to midnight
+  // would have counted that morning's purchases twice.
+  const since = source.since || null
+  const isCard = PREPAID_CARDS.some((c) => c.name === source.name)
   const counts = (r) => !since || !r.date || r.date >= since
   const skipped = rows.filter((r) => !counts(r)).length
 
+  // The sum this list adds up to. Listing movements without ever totalling
+  // them means a balance can only be taken on trust — this is the arithmetic
+  // written out, so `opening + movement` can be checked against the figure on
+  // the card with your own eyes.
+  const movement = rows.filter(counts).reduce((s, r) => s + r.amount, 0)
+
+  const opening = Number.isFinite(source.opening) ? source.opening : null
+  const closing = opening === null ? null : opening + movement
+
   return (
     <BottomSheet onClose={onClose} title={`${source.name} — history`}>
+      {rows.length > 0 && (
+        <div className="rounded-xl bg-gray-100/80 p-3 text-xs dark:bg-neutral-800/50">
+          {opening !== null && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-gray-500 dark:text-gray-400">
+                Starting balance{since ? ` · ${since.toLocaleDateString()}` : ''}
+              </span>
+              <span className="tabular-nums text-gray-700 dark:text-gray-200">{fmt(opening)}</span>
+            </div>
+          )}
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span className="text-gray-500 dark:text-gray-400">
+              {rows.filter(counts).length} movement
+              {rows.filter(counts).length === 1 ? '' : 's'} since
+            </span>
+            <span
+              className={`tabular-nums font-medium ${
+                movement >= 0
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-gray-700 dark:text-gray-200'
+              }`}
+            >
+              {movement >= 0 ? '+' : '−'}
+              {fmt(Math.abs(movement))}
+            </span>
+          </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-gray-300/60 pt-1.5 dark:border-white/10">
+            <span className="font-semibold text-gray-700 dark:text-gray-200">
+              {closing === null ? 'Total of everything below' : 'Balance now'}
+            </span>
+            <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100">
+              {fmt(closing === null ? movement : closing)}
+            </span>
+          </div>
+        </div>
+      )}
       {rows.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Nothing logged with {source.name} yet.
@@ -94,12 +144,14 @@ export default function SourceHistorySheet({ source, data, onUndo, onUndoEntry, 
           )}
         </div>
       )}
-      {skipped > 0 && (
+            {skipped > 0 && (
         <p className="rounded-xl bg-amber-50 p-2.5 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
           {skipped} record{skipped === 1 ? '' : 's'} sit before this balance's starting point (
           {since?.toLocaleDateString()}), so they don't move the number — the balance restarted from
-          the figure you typed in Settings. Set "Counting from" to an earlier date there if they
-          should count.
+          the figure you typed.{' '}
+          {isCard
+            ? `Delete the "set exact balance" top-up on ${since?.toLocaleDateString()} if they should count again.`
+            : 'Set "Counting from" to an earlier date in Settings if they should count.'}
         </p>
       )}
       {rows.length > 0 && (

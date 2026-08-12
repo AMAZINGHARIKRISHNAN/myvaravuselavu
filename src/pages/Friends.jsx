@@ -514,13 +514,13 @@ function PurchaseRow({ purchase: p, onPay, onEdit, onDelete }) {
           </p>
         )}
       </div>
-      <div className="flex shrink-0">
+      <div className="flex shrink-0 gap-0.5">
         {!settled && (
           <button
             type="button"
             onClick={onPay}
             aria-label="Record payment"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-emerald-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-emerald-400"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-emerald-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-emerald-400"
           >
             <HandCoins size={16} />
           </button>
@@ -529,7 +529,7 @@ function PurchaseRow({ purchase: p, onPay, onEdit, onDelete }) {
           type="button"
           onClick={onEdit}
           aria-label="Edit"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
         >
           <Pencil size={15} />
         </button>
@@ -537,7 +537,7 @@ function PurchaseRow({ purchase: p, onPay, onEdit, onDelete }) {
           type="button"
           onClick={onDelete}
           aria-label="Delete"
-          className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
         >
           <Trash2 size={15} />
         </button>

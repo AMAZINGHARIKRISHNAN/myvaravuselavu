@@ -9,6 +9,7 @@ import OfflineBanner from './OfflineBanner'
 import AuroraBackground from './AuroraBackground'
 import CelebrationLayer from './CelebrationLayer'
 import MoreSheet from './MoreSheet'
+import { OVERLAY_ROOT_ID } from '../ui/Portal'
 // Tiny, and needed on every navigation — so it rides in the main bundle rather
 // than costing a chunk fetch in the middle of a transition.
 import HudRouteTransition from '../hud/HudRouteTransition'
@@ -183,6 +184,13 @@ export default function Layout() {
         </nav>
 
         {showMore && <MoreSheet onClose={() => setShowMore(false)} />}
+
+        {/* Where every page's floating chrome lands — add buttons, bottom
+            sheets, confirm dialogs. Outside <main>, so the route transition's
+            transform can never become their containing block, but inside this
+            z-10 wrapper so they keep the same stacking rules as the tab bar
+            and the toasts. See components/ui/Portal.jsx. */}
+        <div id={OVERLAY_ROOT_ID} />
 
         <ToastContainer />
         <CelebrationLayer />

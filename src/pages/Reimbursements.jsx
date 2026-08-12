@@ -19,7 +19,9 @@ import {
   lineMarkup,
   reimbursementSummary,
 } from '../lib/reimburse'
+import { fundingSources } from '../lib/money'
 import BottomSheet from '../components/ui/BottomSheet'
+import Portal from '../components/ui/Portal'
 import Skeleton from '../components/ui/Skeleton'
 import EmptyState from '../components/ui/EmptyState'
 
@@ -491,37 +493,42 @@ export default function Reimbursements() {
 
       {/* ---- Sticky bar for the current selection ---- */}
       {tab === 'toClaim' && selectedLines.length > 0 && (
-        <div className="fixed inset-x-0 bottom-16 z-30 px-4 lg:bottom-4 lg:left-auto lg:right-8 lg:w-96 lg:px-0">
-          <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
-            <div className="min-w-0 flex-1">
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {selectedLines.length} line{selectedLines.length === 1 ? '' : 's'} selected
-              </p>
-              <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-gray-100">
-                {formatJPY(sumRequested(selectedLines))}
-              </p>
-              {sumRequested(selectedLines) !== sumLines(selectedLines) && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                  cost {formatJPY(sumLines(selectedLines))}
+        // Portalled: the route transition's transform on the page wrapper would
+        // otherwise pin this bar to the bottom of the list rather than the
+        // bottom of the screen — see components/ui/Portal.jsx.
+        <Portal>
+          <div className="fixed inset-x-0 bottom-16 z-30 px-4 lg:bottom-4 lg:left-auto lg:right-8 lg:w-96 lg:px-0">
+            <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {selectedLines.length} line{selectedLines.length === 1 ? '' : 's'} selected
                 </p>
-              )}
+                <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-gray-100">
+                  {formatJPY(sumRequested(selectedLines))}
+                </p>
+                {sumRequested(selectedLines) !== sumLines(selectedLines) && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                    cost {formatJPY(sumLines(selectedLines))}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-medium text-gray-500 active:scale-95 dark:text-gray-400"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setNaming(true)}
+                className="btn-primary min-h-11 shrink-0 px-4 text-sm"
+              >
+                Create report
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setSelected(new Set())}
-              className="min-h-11 shrink-0 rounded-xl px-3 text-sm font-medium text-gray-500 active:scale-95 dark:text-gray-400"
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={() => setNaming(true)}
-              className="btn-primary min-h-11 shrink-0 px-4 text-sm"
-            >
-              Create report
-            </button>
           </div>
-        </div>
+        </Portal>
       )}
 
       {naming && (
@@ -726,21 +733,27 @@ function StageBar({ claim }) {
 function NameReportSheet({ total, count, onCreate, onClose }) {
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
   return (
     <BottomSheet
       as="form"
       onSubmit={async (e) => {
         e.preventDefault()
         setSaving(true)
+        setError('')
         try {
           await onCreate(name)
-        } catch {
+        } catch (err) {
+          // Say what went wrong. Silently re-enabling the button left the user
+          // tapping it again on a report that was never going to be created.
+          setError(err?.message || 'Could not create the report. Try again.')
           setSaving(false)
         }
       }}
       onClose={onClose}
       title="New expense report"
     >
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       <p className="text-sm text-gray-600 dark:text-gray-300">
         {count} line{count === 1 ? '' : 's'} · {formatJPY(total)}
       </p>
@@ -924,10 +937,11 @@ function ExpenseSheet({ initial, accounts, onSave, onDelete, onClose }) {
         <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
           Paid with
           <select value={paidWith} onChange={(e) => setPaidWith(e.target.value)} className="input">
-            <option value="Cash">Cash</option>
-            {accounts.map((a) => (
-              <option key={a.id} value={a.label}>
-                {a.label}
+            {/* Yen accounts only: the office reimburses in yen, so fronting a
+                claim from an Indian account would take rupees off it. */}
+            {fundingSources(accounts, 'JP').map((label) => (
+              <option key={label} value={label}>
+                {label}
               </option>
             ))}
             <option value="Pasmo">Pasmo</option>
@@ -1035,11 +1049,17 @@ function ReportSheet({ claim, lines, accounts, onSubmit, onApprove, onReject, on
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmReopen, setConfirmReopen] = useState(false)
+  const [error, setError] = useState('')
 
   const run = async (fn) => {
     setBusy(true)
+    setError('')
     try {
       await fn()
+    } catch (err) {
+      // These actions delete income and re-link lines. A rejected write that
+      // reported nothing looked exactly like one that worked.
+      setError(err?.message || 'Could not save that. Check your connection and try again.')
     } finally {
       setBusy(false)
     }
@@ -1048,6 +1068,8 @@ function ReportSheet({ claim, lines, accounts, onSubmit, onApprove, onReject, on
   return (
     <BottomSheet onClose={onClose} title={claim.name}>
       <StageBar claim={claim} />
+
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {claimRejected(claim) && (
         <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">

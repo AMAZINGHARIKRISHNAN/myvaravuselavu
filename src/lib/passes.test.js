@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { coversDate, passCovering, passDays, passResult, passProfit, passDeduction, passSpentFrom, refundableDeposits } from './passes'
+import { coversDate, passCovering, passDays, passResult, passProfit, passDeduction, passSpentFrom } from './passes'
 
 // A ¥10,000 monthly pass against the ¥560/day the office pays back.
 const pass = {
@@ -115,9 +115,11 @@ describe('pass payment sources & refundable deposit', () => {
     expect(passSpentFrom([pass, older], 'Pasmo')).toBe(34000) // no cutoff
   })
 
-  it('reports recoverable deposits, dropping refunded ones', () => {
-    expect(refundableDeposits([pass])).toBe(500)
-    expect(refundableDeposits([{ ...pass, depositRefunded: true }])).toBe(0)
+  it('stops deducting a deposit once the card is handed back', () => {
+    // The deposit is recoverable, so returning the card has to restore the
+    // balance it came out of — net zero, not a sunk cost.
+    expect(passDeduction(pass, 'Cash')).toBeGreaterThan(0)
+    expect(passDeduction({ ...pass, depositRefunded: true, cost: 0 }, 'Cash')).toBe(0)
   })
 
   it('a pass with no source recorded moves nothing (old data safe)', () => {

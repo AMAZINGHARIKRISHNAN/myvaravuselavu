@@ -1,21 +1,44 @@
 import { useEffect, useState } from 'react'
 import { Lock } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import {
   hasPin,
   isUnlocked,
   verifyPin,
   markUnlocked,
+  clearPin,
   getLockoutRemainingMs,
   recordFailedAttempt,
   resetAttempts,
 } from '../../lib/appLock'
 
 export default function PinGate({ children }) {
+  const { logout } = useAuth()
   const [locked, setLocked] = useState(false)
   const [checked, setChecked] = useState(false)
   const [pin, setPin] = useState('')
   const [error, setError] = useState('')
   const [lockoutMs, setLockoutMs] = useState(0)
+  const [forgot, setForgot] = useState(false)
+
+  // Forgetting the PIN used to be unrecoverable: the only way back into your
+  // own data was clearing site data from browser settings, which most people
+  // will never find on a phone.
+  //
+  // Signing out is a safe way out because the PIN was never the thing keeping
+  // anyone else out — the Firestore rules are, and they answer to Firebase Auth.
+  // The PIN is a convenience over the top of that, so trading it for a full
+  // re-authentication is a STRICTER check, not a weaker one. Nothing is
+  // deleted: the records live in the account, and signing back in restores them.
+  const handleForgot = async () => {
+    clearPin()
+    try {
+      await logout()
+    } catch {
+      /* already signed out, or offline — the gate is gone either way */
+    }
+    setLocked(false)
+  }
 
   useEffect(() => {
     setLocked(hasPin() && !isUnlocked())
@@ -85,6 +108,42 @@ export default function PinGate({ children }) {
           {lockoutMs > 0 ? `Locked (${lockoutSeconds}s)` : 'Unlock'}
         </button>
       </form>
+
+      {/* The way out. Two steps, because signing out is not what someone
+          fat-fingering their PIN wants — but one step from being genuinely
+          stuck, which is the state this exists for. */}
+      {forgot ? (
+        <div className="w-full max-w-xs space-y-2 text-center">
+          <p className="text-xs text-gray-400">
+            Signing out clears the PIN. Nothing is deleted — your records live in
+            your account, and signing back in brings everything with it.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setForgot(false)}
+              className="min-h-11 rounded-xl px-3 text-xs font-medium text-gray-400"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleForgot}
+              className="min-h-11 rounded-xl bg-red-500/15 px-3 text-xs font-semibold text-red-400"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setForgot(true)}
+          className="min-h-11 px-3 text-xs font-medium text-gray-400 underline-offset-4 hover:underline"
+        >
+          Forgot your PIN?
+        </button>
+      )}
     </div>
   )
 }

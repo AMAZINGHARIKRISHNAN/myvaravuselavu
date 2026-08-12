@@ -35,7 +35,6 @@ export const windfallKind = (key) =>
 // nothing at all.
 export const windfallProfit = (w) => (w?.received || 0) - (w?.cost || 0)
 
-export const sumWindfalls = (list = []) => list.reduce((s, w) => s + windfallProfit(w), 0)
 
 // Money in hand vs. money promised. A windfall you've been told about but
 // haven't received yet shouldn't inflate what you can actually spend.

@@ -6,6 +6,8 @@
 // The bills that recur but vary — ticked per month, amounts typed in, because
 // they're never quite the same. "Combined" covers the months the utility puts
 // electricity and gas on one invoice.
+import { countryOf } from './money'
+
 export const COMMON_BILLS = [
   { key: 'rent', label: 'Rent', emoji: '🏠' },
   { key: 'electricity', label: 'Electricity', emoji: '⚡' },
@@ -17,7 +19,6 @@ export const COMMON_BILLS = [
   { key: 'subscriptions', label: 'Subscriptions', emoji: '📺' },
 ]
 
-export const billMeta = (key) => COMMON_BILLS.find((b) => b.key === key)
 
 // Sum of the ticked bills that carry a real amount.
 export function billsTotal(rows = []) {
@@ -33,27 +34,19 @@ export function billsToLog(rows = []) {
     .map((r) => ({ label: r.label, amount: parseFloat(r.amount) || 0 }))
 }
 
-// Reconcile one balance: what the app computed vs. what you actually have.
-//   diff > 0  → the app thinks you have MORE than reality: money left unlogged
-//               (spending you forgot) — book it as an expense to true it up.
-//   diff < 0  → you have MORE than the app knows: income never logged.
-//   null      → nothing entered yet, so no comparison.
-export function reconcileDiff(computed, actual) {
-  if (actual === '' || actual === null || actual === undefined) return null
-  const a = parseFloat(actual)
-  if (!Number.isFinite(a)) return null
-  return Math.round((computed - a) * 100) / 100
-}
-
-export const isReconciled = (diff) => diff !== null && Math.abs(diff) < 1
-
 // The month's headline numbers, from records already scoped to the month.
 export function monthTotals({ income = [], expenses = [], transfers = [] } = {}) {
-  const totalIncome = income.reduce((s, r) => s + (r.amount || 0), 0)
-  // JP-currency spend only for the "saved" line; INR expenses are a separate
-  // currency and never netted against yen income.
+  // YEN ONLY, on BOTH sides. Spending was already filtered; income was not,
+  // and income can genuinely be rupees — settling up in an Indian shared group
+  // books income in that group's currency. A ₹4,000 settlement was landing in
+  // this yen total as ¥4,000 and inflating the month's savings by the
+  // difference. Records written before `country` existed are yen, which is why
+  // the fallback is 'JP' on both sides.
+  const totalIncome = income
+    .filter((r) => (r.country || 'JP') !== 'IN')
+    .reduce((s, r) => s + (r.amount || 0), 0)
   const totalExpenses = expenses
-    .filter((e) => (e.country || 'JP') !== 'IN')
+    .filter((e) => countryOf(e) !== 'IN')
     .reduce((s, e) => s + (e.amount || 0), 0)
   const totalTransfers = transfers.reduce((s, t) => s + (t.amountSent || 0), 0)
   const saved = totalIncome - totalExpenses - totalTransfers

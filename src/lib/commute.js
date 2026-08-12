@@ -33,8 +33,9 @@ export const isWeekday = (d) => d.getDay() !== 0 && d.getDay() !== 6
 
 // ---- Japanese public holidays: no office on a 祝日, so auto-log skips them.
 // Computed instead of a table so it never goes stale: fixed dates,
-// happy-Monday holidays, the two equinoxes (formula valid 2000–2099), and
-// the substitute-Monday rule (holiday on Sunday → next weekday off).
+// happy-Monday holidays, the two equinoxes (formula valid 2000–2099), the
+// sandwiched-day rule (国民の休日) and the substitute-Monday rule
+// (holiday on Sunday → next weekday off).
 
 const nthMondayDate = (year, month, n) => {
   const firstDay = new Date(year, month, 1).getDay()
@@ -62,7 +63,31 @@ export function jpHolidayKeys(year) {
     [10, 23], // Labor Thanksgiving Day
   ].map(([m, d]) => new Date(year, m, d, 12))
 
-  const keys = new Set(dates.map(dateKey))
+  // The statutory holidays themselves, before either derived rule. Both rules
+  // below are decided against THIS set rather than the growing one, so a day
+  // one rule creates can never cascade into inventing another.
+  const base = new Set(dates.map(dateKey))
+  const keys = new Set(base)
+
+  // 国民の休日 (Act on National Holidays, art. 3(3)): a day with a holiday on
+  // either side of it is itself a holiday. Only Silver Week ever triggers it —
+  // Respect for the Aged Day on the third Monday of September with the
+  // Autumnal Equinox two days later, which lands in 2026, 2032, 2037…
+  // Without it the auto-log booked a phantom commute on a day the office was
+  // shut, and then offered it to the office as a claim.
+  for (const d of dates) {
+    const between = new Date(d)
+    between.setDate(between.getDate() + 1)
+    const after = new Date(d)
+    after.setDate(after.getDate() + 2)
+    // The statute excludes Sundays (they are not working days anyway) and days
+    // that are already a holiday in their own right.
+    if (between.getDay() === 0 || base.has(dateKey(between))) continue
+    if (base.has(dateKey(after))) keys.add(dateKey(between))
+  }
+
+  // 振替休日 art. 3(2): a holiday falling on a Sunday moves to the next day
+  // that is not already one — which may be a sandwiched day added above.
   for (const d of dates) {
     if (d.getDay() !== 0) continue
     const sub = new Date(d)

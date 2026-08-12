@@ -1,9 +1,11 @@
-import { NON_ACCOUNT_PAYMENT_METHODS } from '../../lib/constants'
+import { NON_ACCOUNT_PAYMENT_METHODS, methodCountry } from '../../lib/constants'
 
 export default function PaymentMethodGrid({ accounts, value, country, onSelect }) {
   const options = [
     ...accounts.map((a) => ({ id: a.id, label: a.label, country: a.country })),
-    ...NON_ACCOUNT_PAYMENT_METHODS.map((m) => ({ id: m, label: m, country: null })),
+    // A card or wallet that exists in only one country carries that country
+    // with it, so picking it can never leave the currency to a stale default.
+    ...NON_ACCOUNT_PAYMENT_METHODS.map((m) => ({ id: m, label: m, country: methodCountry(m) })),
   ]
 
   const handleSelect = (opt) => {
@@ -31,7 +33,9 @@ export default function PaymentMethodGrid({ accounts, value, country, onSelect }
         ))}
       </div>
 
-      {value && NON_ACCOUNT_PAYMENT_METHODS.includes(value) && (
+      {/* Only Cash reaches here now: it is the one method that genuinely holds
+          both currencies, so it is the only one worth asking about. */}
+      {value && NON_ACCOUNT_PAYMENT_METHODS.includes(value) && !methodCountry(value) && (
         <div>
           <p className="text-xs text-gray-500 mb-2 text-center dark:text-gray-400">Country</p>
           <div className="grid grid-cols-2 gap-2.5">

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ChevronLeft, ChevronRight, Wallet, Receipt, Send, TrendingUp, LineChart, TrendingDown, LifeBuoy, Plus, ScanLine } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Wallet, Receipt, Send, TrendingUp, LineChart, TrendingDown, LifeBuoy } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
 import { useSettings } from '../hooks/useSettings'
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber'
@@ -15,26 +15,26 @@ import { sumIn, sumByCategory, inCountry } from '../lib/money'
 import { daysUntilSalary, lastNDaysTotals, todayTotal } from '../lib/streak'
 import { computeSafeToSpend } from '../lib/planning'
 import { useRecurring } from '../hooks/useRecurring'
+import { useToday } from '../hooks/useToday'
 import GreetingHeader from '../components/dashboard/GreetingHeader'
 import HudGreeting from '../components/hud/HudGreeting'
 import MonthlyReportCard from '../components/dashboard/MonthlyReportCard'
 import RateBanner from '../components/dashboard/RateBanner'
+import GlanceStrip from '../components/dashboard/GlanceStrip'
 import AccountsCard from '../components/dashboard/AccountsCard'
 import QuickAdd from '../components/entry/QuickAdd'
 import EntryFlow from '../components/entry/EntryFlow'
+import MoveMoneySheet from '../components/entry/MoveMoneySheet'
 import BudgetProgress from '../components/dashboard/BudgetProgress'
 import QuickRepeat from '../components/dashboard/QuickRepeat'
 import RecurringDue from '../components/dashboard/RecurringDue'
 import ShareSummaryButton from '../components/dashboard/ShareSummaryButton'
 import ImageReportButton from '../components/dashboard/ImageReportButton'
 import FriendPLCard from '../components/dashboard/FriendPLCard'
-import CommuteCard from '../components/dashboard/CommuteCard'
-import ShoppingCard from '../components/dashboard/ShoppingCard'
-import NotesCard from '../components/dashboard/NotesCard'
 import ReviewBanner from '../components/dashboard/ReviewBanner'
 import SalaryDayCard from '../components/dashboard/SalaryDayCard'
 import OnboardingChecklist from '../components/dashboard/OnboardingChecklist'
-import FloatingActionButton from '../components/ui/FloatingActionButton'
+import SpeedDial from '../components/ui/SpeedDial'
 import JarvisSheet from '../components/jarvis/JarvisSheet'
 import Skeleton from '../components/ui/Skeleton'
 
@@ -69,8 +69,11 @@ function DeltaBadge({ value, goodDirection }) {
 
 export default function Dashboard() {
   const [monthOffset, setMonthOffset] = useState(0)
-  const dateRange = useMemo(() => monthRange(monthOffset), [monthOffset])
-  const prevRange = useMemo(() => monthRange(monthOffset + 1), [monthOffset])
+  // `today` is a dependency so an installed PWA that sits on the home screen
+  // across midnight rolls onto the new month instead of staying on the old one.
+  const today = useToday()
+  const dateRange = useMemo(() => monthRange(monthOffset, today), [monthOffset, today])
+  const prevRange = useMemo(() => monthRange(monthOffset + 1, today), [monthOffset, today])
   const isCurrentMonth = monthOffset === 0
 
   const { settings, loading: settingsLoading } = useSettings()
@@ -101,6 +104,9 @@ export default function Dashboard() {
   const { toast } = useToast()
   const { hud } = useTheme()
   const [showManual, setShowManual] = useState(false)
+  // null = closed; an object = open, carrying whatever the entry flow
+  // already knew (the amount typed on the keypad, the date chosen).
+  const [showMove, setShowMove] = useState(null)
   const [showJarvis, setShowJarvis] = useState(false)
   // An expense the assistant heard, handed to the entry sheet prefilled.
   const [jarvisDraft, setJarvisDraft] = useState(null)
@@ -139,22 +145,38 @@ export default function Dashboard() {
   // spending is real but it is other money — it gets its own line rather than
   // being added in, which is what used to make this screen disagree with the
   // wallet and the charts.
-  const totalIncome = sumIn(income.data)
-  const totalExpenses = sumIn(expenses.data)
-  const inrExpenses = sumIn(expenses.data, 'IN')
-  const totalTransfers = transfers.data.reduce((sum, r) => sum + (r.amountSent || 0), 0)
-  const savingsRate = totalIncome
-    ? (totalIncome - totalExpenses - totalTransfers) / totalIncome
-    : NaN
-  const netSavings = totalIncome - totalExpenses - totalTransfers
+  //
+  // Memoised because this screen re-renders on every one of its two dozen
+  // snapshot updates — and on every keystroke in the entry sheet — while these
+  // totals only move when their own month's records do. Each month's figures
+  // are grouped so a change to one does not recompute the other.
+  const { totalIncome, totalExpenses, inrExpenses, totalTransfers, savingsRate, netSavings } =
+    useMemo(() => {
+      const inc = sumIn(income.data)
+      const exp = sumIn(expenses.data)
+      const sent = transfers.data.reduce((sum, r) => sum + (r.amountSent || 0), 0)
+      return {
+        totalIncome: inc,
+        totalExpenses: exp,
+        inrExpenses: sumIn(expenses.data, 'IN'),
+        totalTransfers: sent,
+        savingsRate: inc ? (inc - exp - sent) / inc : NaN,
+        netSavings: inc - exp - sent,
+      }
+    }, [income.data, expenses.data, transfers.data])
   const animatedNetSavings = useAnimatedNumber(netSavings)
 
-  const prevTotalIncome = sumIn(prevIncome.data)
-  const prevTotalExpenses = sumIn(prevExpenses.data)
-  const prevTotalTransfers = prevTransfers.data.reduce((sum, r) => sum + (r.amountSent || 0), 0)
-  const prevSavingsRate = prevTotalIncome
-    ? (prevTotalIncome - prevTotalExpenses - prevTotalTransfers) / prevTotalIncome
-    : NaN
+  const { prevTotalIncome, prevTotalExpenses, prevTotalTransfers, prevSavingsRate } = useMemo(() => {
+    const inc = sumIn(prevIncome.data)
+    const exp = sumIn(prevExpenses.data)
+    const sent = prevTransfers.data.reduce((sum, r) => sum + (r.amountSent || 0), 0)
+    return {
+      prevTotalIncome: inc,
+      prevTotalExpenses: exp,
+      prevTotalTransfers: sent,
+      prevSavingsRate: inc ? (inc - exp - sent) / inc : NaN,
+    }
+  }, [prevIncome.data, prevExpenses.data, prevTransfers.data])
 
   // Budgets are set in yen, so rupee spending must never eat into them.
   const spendByCategory = useMemo(() => sumByCategory(expenses.data), [expenses.data])
@@ -325,6 +347,10 @@ export default function Dashboard() {
     {
       label: 'Savings rate',
       value: formatPercent(savingsRate),
+      // A savings rate needs income to be a rate OF something. Showing a bare
+      // "—" left it looking broken rather than unanswerable, so the reason is
+      // said out loud — and it doubles as the nudge to log the salary.
+      sub: Number.isFinite(savingsRate) ? null : 'no income logged this month yet',
       Icon: TrendingUp,
       tint: 'bg-gradient-to-br from-violet-500/25 to-violet-500/5 text-violet-600 dark:text-violet-400',
       delta: Number.isFinite(prevSavingsRate) && Number.isFinite(savingsRate) ? savingsRate - prevSavingsRate : null,
@@ -411,6 +437,11 @@ export default function Dashboard() {
       )}
 
       <RateBanner transfers={[...transfers.data, ...prevTransfers.data]} />
+
+      {/* Things to notice, grouped with the rate banner rather than buried
+          three cards down: a transit card about to be refused, a refund that
+          hasn't landed, a note you left yourself. Silent when there's none. */}
+      <GlanceStrip />
 
       {isCurrentMonth && (
         <div className="space-y-3">
@@ -592,26 +623,10 @@ export default function Dashboard() {
         <AccountsCard />
         {/* Profit & loss from friend deals — amounts and % returns */}
         <FriendPLCard />
-        {/* Straight to the reconcile screen: after a few days of not logging,
-            the balances above drift from the bank's — this is where that gets
-            fixed. */}
-        <Link
-          to="/reconcile"
-          className="card flex items-center gap-3 p-4 transition-transform active:scale-[0.99] touch-manipulation hover:-translate-y-0.5"
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/25 to-amber-500/5 text-amber-600 dark:text-amber-400">
-            <ScanLine size={16} aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Check against your bank
-            </span>
-            <span className="block text-xs text-gray-500 dark:text-gray-400">
-              Type the real balances — log whatever's missing, date by date
-            </span>
-          </span>
-          <ChevronRight size={15} className="shrink-0 text-gray-400" aria-hidden="true" />
-        </Link>
+        {/* The "check against your bank" card lived here — a whole card whose
+            only content was its own name. More › Month end › Reconcile is the
+            door now, and the Wallet page links straight into it from the
+            balances you'd be checking. */}
         {isCurrentMonth && <OnboardingChecklist settings={settings} />}
         {isCurrentMonth && <RecurringDue />}
 
@@ -644,15 +659,11 @@ export default function Dashboard() {
       </div>
       </div>
 
-      {/* Full width, under both columns: the places you go rather than the
-          figures you read. Four across on a wide screen, two on a tablet. */}
+      {/* Full width, under both columns. This row used to hold three cards for
+          Commute, Shopping and Notes — doorways to pages the More sheet now
+          reaches on its own. Their readouts survive as chips in one strip, so
+          a low transit card still shouts without costing a card of its own. */}
       <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {/* Daily bus trips + what the office still owes back */}
-        <CommuteCard />
-        {/* Temu/Shein/Amazon orders — cash vs points, returns & refunds */}
-        <ShoppingCard />
-        {/* Scratchpad: lists, reminders, anything worth writing down */}
-        <NotesCard />
         {insights.map((insight, i) => (
           <div
             key={i}
@@ -664,30 +675,42 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* One button, two actions, both named. Logging an expense and asking a
+          question are different intentions — but they were two unlabelled
+          circles 8px apart, which read as one control with a rendering bug. */}
       {isCurrentMonth && (
-        <FloatingActionButton label="Manual entry" icon={<Plus size={24} />} onClick={() => setShowManual(true)} />
+        <SpeedDial
+          label="Add or ask"
+          actions={[
+            {
+              label: 'Ask the assistant',
+              icon: (
+                <span className="relative flex h-full w-full items-center justify-center rounded-full">
+                  <span className="absolute inset-1.5 rounded-full border border-cyan-300/30" />
+                  <span className="h-3.5 w-3.5 rounded-full bg-cyan-300 shadow-[0_0_12px_4px_rgba(34,211,238,0.6)]" />
+                </span>
+              ),
+              tint: 'border border-cyan-400/60 bg-neutral-900/90 backdrop-blur',
+              onClick: () => setShowJarvis(true),
+            },
+            {
+              label: 'Add an expense',
+              icon: <Receipt size={20} aria-hidden="true" />,
+              tint: 'bg-white text-indigo-600 dark:bg-neutral-800 dark:text-indigo-400',
+              onClick: () => setShowManual(true),
+            },
+          ]}
+        />
       )}
 
-      {/* The assistant, parked just above the add button: an arc reactor you
-          can talk to. Sits apart from + because asking and logging are
-          different intentions. */}
-      {isCurrentMonth && (
-        <button
-          type="button"
-          onClick={() => {
-            if (navigator.vibrate) navigator.vibrate(10)
-            setShowJarvis(true)
-          }}
-          aria-label="Ask the assistant"
-          className="fixed bottom-[calc(9rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-cyan-400/60 bg-neutral-900/90 shadow-lg shadow-cyan-500/25 backdrop-blur transition-all duration-150 hover:scale-105 active:scale-90 touch-manipulation lg:bottom-28 lg:right-8"
-        >
-          <span className="absolute inset-1.5 rounded-full border border-cyan-300/30" />
-          <span className="h-3.5 w-3.5 rounded-full bg-cyan-300 shadow-[0_0_12px_4px_rgba(34,211,238,0.6)]" />
-        </button>
-      )}
+      {showMove && <MoveMoneySheet initial={showMove} onClose={() => setShowMove(null)} />}
 
       {showManual && (
         <EntryFlow
+          onMoveMoney={(carried) => {
+            setShowManual(false)
+            setShowMove(carried || {})
+          }}
           initial={jarvisDraft}
           onClose={() => {
             setShowManual(false)
