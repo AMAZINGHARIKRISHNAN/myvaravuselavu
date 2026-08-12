@@ -1,5 +1,6 @@
+import { monthTotals } from './money'
 import { describe, it, expect } from 'vitest'
-import { billsTotal, billsToLog, monthTotals } from './audit'
+import { billsTotal, billsToLog } from './audit'
 
 describe('bills', () => {
   const rows = [

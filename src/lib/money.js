@@ -89,3 +89,35 @@ export function paymentMethodsFor(accounts = [], country = HOME_COUNTRY) {
     ...NON_ACCOUNT_PAYMENT_METHODS.filter((m) => (methodCountry(m) ?? country) === country),
   ]
 }
+
+// The month's headline numbers, from records already scoped to the month.
+//
+// THE one derivation of "what came in, what went out, what I sent home". It
+// used to live in the audit page's helper while the dashboard, the review and
+// the charts each rolled their own — four versions of one number, free to
+// drift, and they had. The review page's summed rupees and yen together, so an
+// Indian group settlement of ₹4,000 counted as ¥4,000 of income and inflated
+// the month's savings by the difference.
+//
+// YEN ONLY, on both sides, through the same countryOf every other total uses.
+// Income can genuinely be rupees — settling up in an Indian shared group books
+// income in that group's currency — so it must be filtered exactly like
+// spending, not assumed.
+//
+// Transfers are the exception and are NOT filtered: a remittance is money
+// leaving your yen, and `amountSent` is always the yen figure. `savingsRate` is
+// null rather than 0 when nothing came in, because "no income" is not a rate of
+// zero — it is a rate that does not exist, and dividing would say otherwise.
+export function monthTotals({ income = [], expenses = [], transfers = [] } = {}) {
+  const totalIncome = sumIn(income, HOME_COUNTRY)
+  const totalExpenses = sumIn(expenses, HOME_COUNTRY)
+  const totalTransfers = transfers.reduce((s, t) => s + (t.amountSent || 0), 0)
+  const saved = totalIncome - totalExpenses - totalTransfers
+  return {
+    income: totalIncome,
+    expenses: totalExpenses,
+    transfers: totalTransfers,
+    saved,
+    savingsRate: totalIncome ? saved / totalIncome : null,
+  }
+}

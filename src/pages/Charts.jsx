@@ -19,7 +19,7 @@ import { profitEvents } from '../lib/profit'
 import { formatJPY, formatINR, formatPercent, toDate } from '../lib/format'
 import { CATEGORY_ICONS } from '../lib/constants'
 import { rankStores, storeCoverage } from '../lib/stores'
-import { sumIn, inCountry } from '../lib/money'
+import { inCountry, monthTotals } from '../lib/money'
 import { useToday } from '../hooks/useToday'
 import { useTheme } from '../context/ThemeContext'
 import { chartTheme, donutSlices, colorForKey } from '../lib/chartTheme'
@@ -250,9 +250,11 @@ export default function Charts() {
 
   const yearSummary = useMemo(() => {
     // Yen only: the card is labelled in ¥, and rupee spending is other money.
-    const income = sumIn(yearIncome.data)
-    const expenses = sumIn(yearExpenses.data)
-    const sent = yearTransfers.data.reduce((sum, r) => sum + (r.amountSent || 0), 0)
+    const { income, expenses, transfers: sent } = monthTotals({
+      income: yearIncome.data,
+      expenses: yearExpenses.data,
+      transfers: yearTransfers.data,
+    })
     const saved = income - expenses - sent
     return { income, expenses, sent, saved }
   }, [yearIncome.data, yearExpenses.data, yearTransfers.data])

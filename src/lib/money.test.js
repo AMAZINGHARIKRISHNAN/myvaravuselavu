@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { countryOf, inCountry, sumIn, sumByCategory, countryForAccount } from './money'
+import { countryOf, inCountry, sumIn, sumByCategory, countryForAccount, monthTotals } from './money'
 
 const records = [
   { id: 'a', amount: 1000, category: 'Food' }, // no country → yen, as it always was
@@ -115,5 +115,95 @@ describe('a fixed-currency method overrules a stored country', () => {
   it('puts every record in exactly one currency', () => {
     const all = [udon, lunch, upi, { id: 'c', amount: 100, paymentMethod: 'Cash', country: 'IN' }]
     expect(sumIn(all, 'JP') + sumIn(all, 'IN')).toBe(900 + 500 + 700 + 100)
+  })
+})
+
+// One derivation of the month, used by the dashboard, the review page, the
+// charts and the audit. They each had their own before, and they disagreed.
+describe('monthTotals', () => {
+  const yen = (amount, extra = {}) => ({ amount, ...extra })
+
+  it('adds up what came in, what went out, and what was sent home', () => {
+    expect(
+      monthTotals({
+        income: [yen(300000)],
+        expenses: [yen(80000)],
+        transfers: [{ amountSent: 50000, amountReceived: 27000 }],
+      })
+    ).toEqual({
+      income: 300000,
+      expenses: 80000,
+      transfers: 50000,
+      saved: 170000,
+      savingsRate: 170000 / 300000,
+    })
+  })
+
+  // The bug this consolidation found: the review page summed rupees and yen
+  // together, so an Indian group settlement inflated the month's income.
+  it('never lets rupee income into the yen total', () => {
+    const totals = monthTotals({
+      income: [yen(300000), yen(4000, { country: 'IN' })],
+      expenses: [],
+      transfers: [],
+    })
+    expect(totals.income).toBe(300000)
+    expect(totals.saved).toBe(300000)
+  })
+
+  it('never lets rupee spending into the yen total', () => {
+    const totals = monthTotals({
+      income: [yen(300000)],
+      expenses: [yen(80000), yen(5000, { country: 'IN' })],
+      transfers: [],
+    })
+    expect(totals.expenses).toBe(80000)
+  })
+
+  // A card decides its own currency, so this must agree with every other total.
+  it('counts a card expense as yen even when stored as rupees', () => {
+    const totals = monthTotals({
+      income: [],
+      expenses: [yen(900, { paymentMethod: 'Edenred', country: 'IN' })],
+      transfers: [],
+    })
+    expect(totals.expenses).toBe(900)
+  })
+
+  // A remittance is yen leaving, and amountSent is always the yen figure — so
+  // transfers are deliberately NOT country-filtered.
+  it('counts what was sent, not what arrived', () => {
+    const totals = monthTotals({
+      income: [],
+      expenses: [],
+      transfers: [{ amountSent: 50000, amountReceived: 27000, country: 'IN' }],
+    })
+    expect(totals.transfers).toBe(50000)
+  })
+
+  it('treats an untagged record as yen, like everywhere else', () => {
+    expect(monthTotals({ income: [yen(1000)], expenses: [], transfers: [] }).income).toBe(1000)
+  })
+
+  // "No income" is not a savings rate of zero — it is no rate at all, and
+  // dividing would claim otherwise.
+  it('reports no savings rate when nothing came in', () => {
+    expect(monthTotals({ income: [], expenses: [yen(500)], transfers: [] }).savingsRate).toBe(null)
+  })
+
+  it('allows a negative month without pretending otherwise', () => {
+    const totals = monthTotals({ income: [yen(100000)], expenses: [yen(150000)], transfers: [] })
+    expect(totals.saved).toBe(-50000)
+    expect(totals.savingsRate).toBe(-0.5)
+  })
+
+  it('survives being given nothing', () => {
+    expect(monthTotals()).toEqual({
+      income: 0,
+      expenses: 0,
+      transfers: 0,
+      saved: 0,
+      savingsRate: null,
+    })
   })
 })

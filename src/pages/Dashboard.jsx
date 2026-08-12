@@ -11,7 +11,7 @@ import { monthRange } from '../lib/dateRanges'
 import { formatJPY, formatINR, formatPercent } from '../lib/format'
 import { profitEvents, splitGainLoss } from '../lib/profit'
 import { buildInsights } from '../lib/insights'
-import { sumIn, sumByCategory, inCountry } from '../lib/money'
+import { sumIn, sumByCategory, inCountry, monthTotals } from '../lib/money'
 import { daysUntilSalary, lastNDaysTotals, todayTotal } from '../lib/streak'
 import { computeSafeToSpend } from '../lib/planning'
 import { useRecurring } from '../hooks/useRecurring'
@@ -152,29 +152,34 @@ export default function Dashboard() {
   // are grouped so a change to one does not recompute the other.
   const { totalIncome, totalExpenses, inrExpenses, totalTransfers, savingsRate, netSavings } =
     useMemo(() => {
-      const inc = sumIn(income.data)
-      const exp = sumIn(expenses.data)
-      const sent = transfers.data.reduce((sum, r) => sum + (r.amountSent || 0), 0)
+      const t = monthTotals({
+        income: income.data,
+        expenses: expenses.data,
+        transfers: transfers.data,
+      })
       return {
-        totalIncome: inc,
-        totalExpenses: exp,
+        totalIncome: t.income,
+        totalExpenses: t.expenses,
+        // The rupee side is reported separately, never added to the yen one.
         inrExpenses: sumIn(expenses.data, 'IN'),
-        totalTransfers: sent,
-        savingsRate: inc ? (inc - exp - sent) / inc : NaN,
-        netSavings: inc - exp - sent,
+        totalTransfers: t.transfers,
+        savingsRate: t.savingsRate ?? NaN,
+        netSavings: t.saved,
       }
     }, [income.data, expenses.data, transfers.data])
   const animatedNetSavings = useAnimatedNumber(netSavings)
 
   const { prevTotalIncome, prevTotalExpenses, prevTotalTransfers, prevSavingsRate } = useMemo(() => {
-    const inc = sumIn(prevIncome.data)
-    const exp = sumIn(prevExpenses.data)
-    const sent = prevTransfers.data.reduce((sum, r) => sum + (r.amountSent || 0), 0)
+    const t = monthTotals({
+      income: prevIncome.data,
+      expenses: prevExpenses.data,
+      transfers: prevTransfers.data,
+    })
     return {
-      prevTotalIncome: inc,
-      prevTotalExpenses: exp,
-      prevTotalTransfers: sent,
-      prevSavingsRate: inc ? (inc - exp - sent) / inc : NaN,
+      prevTotalIncome: t.income,
+      prevTotalExpenses: t.expenses,
+      prevTotalTransfers: t.transfers,
+      prevSavingsRate: t.savingsRate ?? NaN,
     }
   }, [prevIncome.data, prevExpenses.data, prevTransfers.data])
 

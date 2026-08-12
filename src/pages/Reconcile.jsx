@@ -14,6 +14,7 @@ import { countryOf, fundingSources } from '../lib/money'
 import { findUntagged, assignOps } from '../lib/untagged'
 import { useSettings } from '../hooks/useSettings'
 import Skeleton from '../components/ui/Skeleton'
+import InvisibleRecords from '../components/wallet/InvisibleRecords'
 
 const FLAGS = { JP: '🇯🇵', IN: '🇮🇳' }
 
@@ -492,6 +493,10 @@ export default function Reconcile() {
           )
         })}
       </div>
+
+      {/* Money that is logged but invisible for a different reason: no date at
+          all, so the ordered query that feeds every screen skips it. */}
+      <InvisibleRecords />
 
       <UntaggedSection
         income={income.data}

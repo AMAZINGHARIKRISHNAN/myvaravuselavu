@@ -14,6 +14,7 @@ import { CATEGORY_ICONS } from '../lib/constants'
 import ImageReportButton from '../components/dashboard/ImageReportButton'
 import Skeleton from '../components/ui/Skeleton'
 import { useToday } from '../hooks/useToday'
+import { monthTotals, sumByCategory } from '../lib/money'
 
 // The month-end moment. Everything the app already knows, assembled into one
 // screen you read once a month (on salary day) instead of piecing together
@@ -66,23 +67,26 @@ export default function Review() {
   const windfalls = useCollection('windfalls')
   const losses = useCollection('losses')
 
-  const sum = (rows, pick = (r) => r.amount) => rows.reduce((s, r) => s + (pick(r) || 0), 0)
-
-  const totalIncome = sum(income.data)
-  const totalExpenses = sum(expenses.data)
-  const totalSent = sum(transfers.data, (r) => r.amountSent)
-  const kept = totalIncome - totalExpenses - totalSent
-  const savingsRate = totalIncome ? kept / totalIncome : NaN
+  // This page used to add its own totals with no currency filter, so a rupee
+  // group settlement counted yen-for-rupee and inflated the month. Same
+  // derivation as the dashboard and the audit now.
+  const totals = monthTotals({
+    income: income.data,
+    expenses: expenses.data,
+    transfers: transfers.data,
+  })
+  const { income: totalIncome, expenses: totalExpenses, transfers: totalSent, saved: kept } = totals
+  const savingsRate = totals.savingsRate ?? NaN
   const grade = gradeForSavingsRate(savingsRate)
 
-  const prevKept =
-    sum(prevIncome.data) - sum(prevExpenses.data) - sum(prevTransfers.data, (r) => r.amountSent)
+  const prevKept = monthTotals({
+    income: prevIncome.data,
+    expenses: prevExpenses.data,
+    transfers: prevTransfers.data,
+  }).saved
 
-  const spendByCategory = useMemo(() => {
-    const totals = {}
-    for (const e of expenses.data) totals[e.category] = (totals[e.category] || 0) + (e.amount || 0)
-    return totals
-  }, [expenses.data])
+  // Yen only, like every other category breakdown in the app.
+  const spendByCategory = useMemo(() => sumByCategory(expenses.data), [expenses.data])
   const topCategories = useMemo(
     () =>
       Object.entries(spendByCategory)

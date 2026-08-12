@@ -40,9 +40,24 @@ export function subscribeToCollection(uid, name, { onData, onError } = {}) {
   )
 }
 
+
+// Every record gets a date, always.
+//
+// The live query orders by `date`, and Firestore NEVER returns a document that
+// is missing the field being ordered on. A record written without one is not
+// merely misplaced — it is invisible to every screen, cannot be searched,
+// edited, or even deleted through the app, and leaves no error behind. It is
+// simply gone while still costing storage.
+//
+// So the write layer refuses to create one. `date` is the only field defaulted
+// here rather than left to the caller, because it is the only field whose
+// absence makes a record unreachable. Now stamped when missing, which is the
+// truthful answer for a record being written now.
+const withDate = (data) => (data?.date ? data : { ...data, date: Timestamp.now() })
+
 export function addRecord(uid, name, data) {
   return addDoc(userCollection(uid, name), {
-    ...data,
+    ...withDate(data),
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   })
@@ -90,7 +105,7 @@ export async function commitOps(uid, ops) {
     const ref = userDoc(uid, o.name, ids[i])
     const data = typeof o.data === 'function' ? o.data(ids) : o.data
     if (o.op === 'set') {
-      batch.set(ref, { ...data, createdAt: Timestamp.now(), updatedAt: Timestamp.now() })
+      batch.set(ref, { ...withDate(data), createdAt: Timestamp.now(), updatedAt: Timestamp.now() })
     } else if (o.op === 'update') {
       batch.update(ref, { ...data, updatedAt: Timestamp.now() })
     } else {
@@ -109,7 +124,7 @@ export async function addRecords(uid, name, records) {
     const batch = writeBatch(db)
     for (const data of records.slice(i, i + CHUNK)) {
       batch.set(doc(userCollection(uid, name)), {
-        ...data,
+        ...withDate(data),
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       })
@@ -217,4 +232,19 @@ export async function fetchSettingsOnce(uid) {
 
 export function saveSettings(uid, data) {
   return setDoc(settingsDoc(uid), data, { merge: true })
+}
+
+// Records already written without a date, which the live query cannot see.
+//
+// This is the ONLY way to find them: an unordered read. The ordered
+// subscription every screen uses skips them by definition, so they cannot be
+// listed, searched or deleted anywhere in the app — a check that never looked
+// would never find anything, and the storage would grow quietly forever.
+export async function findDatelessRecords(uid, names = []) {
+  const found = []
+  for (const name of names) {
+    const rows = await fetchCollectionOnce(uid, name)
+    for (const r of rows) if (!r.date) found.push({ ...r, collection: name })
+  }
+  return found
 }
