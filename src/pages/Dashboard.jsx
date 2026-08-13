@@ -22,6 +22,7 @@ import MonthlyReportCard from '../components/dashboard/MonthlyReportCard'
 import RateBanner from '../components/dashboard/RateBanner'
 import GlanceStrip from '../components/dashboard/GlanceStrip'
 import AccountsCard from '../components/dashboard/AccountsCard'
+import BuildStamp from '../components/dashboard/BuildStamp'
 import QuickAdd from '../components/entry/QuickAdd'
 import EntryFlow from '../components/entry/EntryFlow'
 import MoveMoneySheet from '../components/entry/MoveMoneySheet'
@@ -679,6 +680,11 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* Which build this device is actually running. An installed PWA serves
+          itself from cache, so deploying and updating are separate events —
+          this is what makes the difference visible. */}
+      <BuildStamp />
 
       {/* One button, two actions, both named. Logging an expense and asking a
           question are different intentions — but they were two unlabelled
