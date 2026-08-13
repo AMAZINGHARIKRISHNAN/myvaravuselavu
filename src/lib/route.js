@@ -12,7 +12,7 @@ const KEY = 'vs_places'
 const MAX_TRACKED = 40
 
 // Categories that describe a journey rather than a purchase.
-export const ROUTE_CATEGORIES = ['Transport']
+const ROUTE_CATEGORIES = ['Transport']
 export const isRouteCategory = (category) => ROUTE_CATEGORIES.includes(category)
 
 // Tokens that are never part of a place name — currency, payment methods, and

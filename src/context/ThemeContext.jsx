@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useEffect, useState } from 'react'
+import { createContext, useContext, useCallback, useEffect, useState, useMemo } from 'react'
 import { DEFAULT_SKIN, isSkin, isHud, skinMeta } from '../lib/skins'
 import { playSound } from '../lib/sound'
 
@@ -98,12 +98,17 @@ export function ThemeProvider({ children }) {
     return () => document.removeEventListener('click', onTap, true)
   }, [skin])
 
-  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
+  const toggleTheme = useCallback(() => setTheme((t) => (t === 'dark' ? 'light' : 'dark')), [])
+
+  // Thirteen components read this, and it changes only when the user picks a
+  // theme or a skin — so it must not hand out a new object on every render.
+  const value = useMemo(
+    () => ({ theme, toggleTheme, skin, setSkin, hud: isHud(skin), booting, endBoot }),
+    [theme, toggleTheme, skin, setSkin, booting, endBoot]
+  )
 
   return (
-    <ThemeContext.Provider
-      value={{ theme, toggleTheme, skin, setSkin, hud: isHud(skin), booting, endBoot }}
-    >
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   )

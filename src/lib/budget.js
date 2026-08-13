@@ -2,7 +2,7 @@
 // bar and any alerts read from one place.
 import { formatJPY } from './format'
 
-export const NEAR_THRESHOLD = 0.8 // "getting close" once 80% is spent
+const NEAR_THRESHOLD = 0.8 // "getting close" once 80% is spent
 
 // One row per category with a budget: spent, cap, ratio, and how much is left
 // (negative = overspent). Sorted worst-first so the tightest budgets lead.

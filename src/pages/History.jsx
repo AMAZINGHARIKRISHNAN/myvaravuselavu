@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, memo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Search, Pencil, Trash2, Banknote, ChevronRight } from 'lucide-react'
@@ -37,14 +37,14 @@ export default function History() {
   // All tab — where `tab` is neither 'expenses' nor 'income' — rendered no
   // editor at all and the pencil was a dead tap.
   const [editKind, setEditKind] = useState(null)
-  const openEditor = (record, kind) => {
+  const openEditor = useCallback((record, kind) => {
     setEditing(record)
     setEditKind(kind)
-  }
-  const closeEditor = () => {
+  }, [])
+  const closeEditor = useCallback(() => {
     setEditing(null)
     setEditKind(null)
-  }
+  }, [])
   const [addingIncome, setAddingIncome] = useState(false)
   const [addingExpense, setAddingExpense] = useState(false)
   // null = closed; an object = open, carrying whatever the entry flow
@@ -156,6 +156,12 @@ export default function History() {
 
   const records = tab === 'expenses' ? filteredExpenses : filteredIncome
   const activeUndo = tab === 'expenses' ? expensesUndo : incomeUndo
+  // Read through a ref so the callback handed to every row keeps ONE identity
+  // for the life of the page. A new function each render would defeat the row's
+  // memoisation completely, which is the whole point of extracting it.
+  const activeUndoRef = useRef(activeUndo)
+  activeUndoRef.current = activeUndo
+  const requestDelete = useCallback((id) => activeUndoRef.current.requestDelete(id), [])
 
   // ---- All-activity feed: every collection merged, newest first ----
   const activityFeed = useMemo(() => {
@@ -216,7 +222,13 @@ export default function History() {
 
   // Group records (already sorted date-desc) by local day, with per-day totals.
   // JP and IN expenses are different currencies, so day totals keep them apart.
-  const dayGroups = (() => {
+  // Memoised, not recomputed on every render.
+  //
+  // This walks every record, formats a date key per record and a label per day.
+  // As a bare expression it re-ran on every keystroke in the search box, every
+  // toast, and every snapshot from any of the twelve collections this page
+  // subscribes to — regrouping the whole history to redraw one character.
+  const dayGroups = useMemo(() => {
     const source = tab === 'all' ? activityFiltered : records
     const map = new Map()
     for (const record of source) {
@@ -230,18 +242,18 @@ export default function History() {
       }
       const isExpenses = tab === 'expenses'
       const jpy = recs.reduce(
-        (sum, r) => sum + (isExpenses && r.country === 'IN' ? 0 : r.amount || 0),
+        (sum, r) => sum + (isExpenses && countryOf(r) === 'IN' ? 0 : r.amount || 0),
         0
       )
       const inr = isExpenses
-        ? recs.reduce((sum, r) => sum + (r.country === 'IN' ? r.amount || 0 : 0), 0)
+        ? recs.reduce((sum, r) => sum + (countryOf(r) === 'IN' ? r.amount || 0 : 0), 0)
         : 0
       const totalLabel = [jpy > 0 ? formatJPY(jpy) : null, inr > 0 ? formatINR(inr) : null]
         .filter(Boolean)
         .join(' · ')
       return { key, records: recs, label: format(parseDateInput(key), 'EEE, d MMM yyyy'), totalLabel }
     })
-  })()
+  }, [tab, activityFiltered, records])
 
   const handleExport = () => {
     if (tab === 'all') {
@@ -575,60 +587,13 @@ export default function History() {
               )}
             </div>
             {group.records.map((record) => (
-              <SwipeableRow
+              <LedgerRow
                 key={record.id}
-                onEdit={() => openEditor(record, tab === 'expenses' ? 'expense' : 'income')}
-                onDelete={() => activeUndo.requestDelete(record.id)}
-              >
-              <div
-                data-tone={tab === 'expenses' ? 'out' : 'in'}
-                className="card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out]"
-              >
-                {tab === 'expenses' ? (
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-base dark:bg-neutral-800">
-                    {CATEGORY_ICONS[record.category] || '📌'}
-                  </span>
-                ) : (
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
-                    <Banknote size={16} aria-hidden="true" />
-                  </span>
-                )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
-                    {tab === 'expenses' ? formatByCountry(record.amount, countryOf(record)) : formatJPY(record.amount)}
-                  </p>
-                  <p className="text-xs text-gray-500 truncate dark:text-gray-400">
-                    {tab === 'expenses'
-                      ? `${record.category} · ${record.paymentMethod || '—'} · ${countryOf(record)}`
-                      : record.source}
-                    {/* A journey shows its route; everything else its shop. */}
-                    {hasRoute(record)
-                      ? ` · 🚌 ${routeLabel(record.fromPlace, record.toPlace)}`
-                      : record.store && ` · 🏪 ${record.store}`}
-                    {record.friend && ` · 🤝 for ${record.friend}`}
-                    {record.note && ` · ${record.note}`}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => openEditor(record, tab === 'expenses' ? 'expense' : 'income')}
-                    aria-label="Edit"
-                    className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => activeUndo.requestDelete(record.id)}
-                    aria-label="Delete"
-                    className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-              </SwipeableRow>
+                record={record}
+                tab={tab}
+                onEdit={openEditor}
+                onDelete={requestDelete}
+              />
             ))}
           </div>
         ))}
@@ -661,6 +626,70 @@ export default function History() {
     </div>
   )
 }
+
+// One expense or income line.
+//
+// Memoised, which only became possible once the props stopped being rebuilt on
+// every render: the callbacks are stable, and `record` changes identity only
+// when that record actually changes. Without this, a page holding hundreds of
+// rows redrew all of them whenever anything on the screen moved — a keystroke
+// in the search box, or a toast fired by an unrelated save.
+const LedgerRow = memo(function LedgerRow({ record, tab, onEdit, onDelete }) {
+  const isExpenses = tab === 'expenses'
+  const kind = isExpenses ? 'expense' : 'income'
+  return (
+    <SwipeableRow onEdit={() => onEdit(record, kind)} onDelete={() => onDelete(record.id)}>
+      <div
+        data-tone={isExpenses ? 'out' : 'in'}
+        className="card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out]"
+      >
+        {isExpenses ? (
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-base dark:bg-neutral-800">
+            {CATEGORY_ICONS[record.category] || '📌'}
+          </span>
+        ) : (
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400">
+            <Banknote size={16} aria-hidden="true" />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+            {isExpenses ? formatByCountry(record.amount, countryOf(record)) : formatJPY(record.amount)}
+          </p>
+          <p className="text-xs text-gray-500 truncate dark:text-gray-400">
+            {isExpenses
+              ? `${record.category} · ${record.paymentMethod || '—'} · ${countryOf(record)}`
+              : record.source}
+            {/* A journey shows its route; everything else its shop. */}
+            {hasRoute(record)
+              ? ` · 🚌 ${routeLabel(record.fromPlace, record.toPlace)}`
+              : record.store && ` · 🏪 ${record.store}`}
+            {record.friend && ` · 🤝 for ${record.friend}`}
+            {record.note && ` · ${record.note}`}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-0.5">
+          <button
+            type="button"
+            onClick={() => onEdit(record, kind)}
+            aria-label="Edit"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(record.id)}
+            aria-label="Delete"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </div>
+    </SwipeableRow>
+  )
+})
 
 function TabButton({ active, onClick, children }) {
   return (

@@ -3,7 +3,7 @@
 // Pulled out of the component so they can be tested: this is money, and an
 // amount field that quietly drops a digit or accepts "1.2.3" is the kind of bug
 // that only shows up in a total three weeks later.
-export const MAX_DECIMALS = 2
+const MAX_DECIMALS = 2
 
 // What the value becomes when `key` is pressed, or null when the press should
 // do nothing. Returning null rather than the unchanged value keeps "rejected"

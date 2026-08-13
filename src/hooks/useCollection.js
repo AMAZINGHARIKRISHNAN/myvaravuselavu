@@ -80,10 +80,24 @@ export function useCollection(name, { dateRange, enabled = true } = {}) {
     [state.data, startMs, endMs]
   )
 
-  const add = (record) => addRecord(user.uid, name, record)
-  const addMany = (records) => addRecords(user.uid, name, records)
-  const update = (id, record) => updateRecord(user.uid, name, id, record)
-  const remove = (id) => deleteRecord(user.uid, name, id)
+  // Stable writers, and one stable object holding them.
+  //
+  // These were rebuilt on every render, so anything handed one of them could
+  // never be memoised — a list row taking `remove` was guaranteed to re-render
+  // whenever its page did, however little had changed.
+  const uid = user?.uid
+  const writers = useMemo(
+    () => ({
+      add: (record) => addRecord(uid, name, record),
+      addMany: (records) => addRecords(uid, name, records),
+      update: (id, record) => updateRecord(uid, name, id, record),
+      remove: (id) => deleteRecord(uid, name, id),
+    }),
+    [uid, name]
+  )
 
-  return { data, loading: state.loading, error: state.error, add, addMany, update, remove }
+  return useMemo(
+    () => ({ data, loading: state.loading, error: state.error, ...writers }),
+    [data, state.loading, state.error, writers]
+  )
 }

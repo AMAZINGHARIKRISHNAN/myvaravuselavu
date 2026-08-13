@@ -17,7 +17,7 @@ const round2 = (n) => Math.round(n * 100) / 100
 // Every way money can quietly leave or enter a source, and what each one
 // becomes when written. `bankOnly` lines make no sense for cash (you can't
 // withdraw cash out of cash), `cashOnly` is the reverse.
-export const LINE_TYPES = [
+const LINE_TYPES = [
   { key: 'spent', label: '💸 Spent it', sign: -1, needsCategory: true },
   { key: 'withdraw', label: '🏧 Took out as cash', sign: -1, bankOnly: true },
   { key: 'fee', label: '🏦 Fee / charge', sign: -1, bankOnly: true },
@@ -37,7 +37,7 @@ export function typesFor({ isCash = false, isCard = false, country = 'JP' } = {}
   })
 }
 
-export const lineSign = (type) => LINE_TYPES.find((t) => t.key === type)?.sign ?? -1
+const lineSign = (type) => LINE_TYPES.find((t) => t.key === type)?.sign ?? -1
 
 // What one line does to the balance, signed.
 export function lineDelta(line) {

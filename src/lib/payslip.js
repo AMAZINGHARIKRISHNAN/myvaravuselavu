@@ -89,7 +89,7 @@ export function normalizePayslip(input) {
   }
 }
 
-export const sumMap = (map = {}) => Object.values(map).reduce((s, v) => s + (num(v) || 0), 0)
+const sumMap = (map = {}) => Object.values(map).reduce((s, v) => s + (num(v) || 0), 0)
 
 export const totalAllowances = (p) => sumMap(p?.allowances)
 export const totalDeductions = (p) => sumMap(p?.deductions)
@@ -137,7 +137,7 @@ export function checkConsistency(p, { tolerance = 1 } = {}) {
 // Gemini accepts a PDF as inline data, and a payroll-portal PDF is text rather
 // than pixels — no glare, no skew, no OCR guessing whether that is a 1 or a 7.
 // So a PDF is passed through untouched and only photographs are compressed.
-export const PDF_MIME = 'application/pdf'
+const PDF_MIME = 'application/pdf'
 
 // Inline data is base64, which inflates by about a third, and the request has
 // to stay well inside Gemini's limit. Payslip PDFs are tens of kilobytes; a
@@ -156,7 +156,7 @@ export function payslipFileKind(file) {
 
 // ---- Comparison ------------------------------------------------------------
 
-export const byPeriod = (list = []) =>
+const byPeriod = (list = []) =>
   [...list].filter((p) => p?.period).sort((a, b) => a.period.localeCompare(b.period))
 
 // Month-on-month movement for every line, plus the headline figures.

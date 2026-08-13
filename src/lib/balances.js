@@ -28,7 +28,7 @@ import { transferCredit } from './wallet'
 export const cutoffFor = (account) =>
   account?.openingBalanceAt ? startOfDay(account.openingBalanceAt) : new Date(0)
 
-export const countsToward = (record, since) => {
+const countsToward = (record, since) => {
   const d = toDate(record?.date)
   return Boolean(d) && d >= since
 }

@@ -31,7 +31,7 @@ export function inRange(value, range) {
 }
 
 // When a claim's money moved: paid date if it landed, else the approval date.
-export const claimMoneyDate = (claim) =>
+const claimMoneyDate = (claim) =>
   claim?.paidAt || claim?.approvedAt || claim?.date || null
 
 // Reimbursement surplus, split by whether the money has actually arrived.

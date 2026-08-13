@@ -43,7 +43,7 @@ const nthMondayDate = (year, month, n) => {
 }
 const equinox = (base, year) => Math.floor(base + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4))
 
-export function jpHolidayKeys(year) {
+function jpHolidayKeys(year) {
   const dates = [
     [0, 1], // New Year's Day
     [0, nthMondayDate(year, 0, 2)], // Coming of Age Day

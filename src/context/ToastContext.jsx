@@ -1,7 +1,19 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { playSound } from '../lib/sound'
 
-const ToastContext = createContext(null)
+// TWO contexts, deliberately.
+//
+// Every confirmation in this app is a toast, so `toast()` is called from almost
+// everywhere — 33 components, including useCollection, which puts every screen
+// holding data in the audience. When the list and the function shared one
+// context object, changing the list re-rendered all of them: saving a single
+// expense re-rendered the entire app to show one message.
+//
+// Only the renderer needs the list. Everyone else needs a function that never
+// changes, so `useToast()` now subscribes to nothing that moves and costs a
+// consumer no renders at all.
+const ToastDispatchContext = createContext(null)
+const ToastStateContext = createContext(null)
 
 // Every confirmation in this app arrives as a toast, so this is the one place
 // that knows something succeeded or failed — which makes it the honest place to
@@ -50,11 +62,26 @@ export function ToastProvider({ children }) {
     return () => window.removeEventListener('pagehide', flush)
   }, [])
 
+  // Both callbacks are already stable, so this object is created once and the
+  // dispatch context never notifies anyone again.
+  const dispatch = useMemo(() => ({ toast, dismiss }), [toast, dismiss])
+
   return (
-    <ToastContext.Provider value={{ toasts, toast, dismiss }}>{children}</ToastContext.Provider>
+    <ToastDispatchContext.Provider value={dispatch}>
+      <ToastStateContext.Provider value={toasts}>{children}</ToastStateContext.Provider>
+    </ToastDispatchContext.Provider>
   )
 }
 
+// Showing a toast. Subscribes to nothing that changes, so calling this never
+// costs a re-render — which is why it is safe to use it as widely as it is.
 export function useToast() {
-  return useContext(ToastContext)
+  return useContext(ToastDispatchContext)
+}
+
+// The live list. For the renderer alone: anything using this re-renders on
+// every toast, which is exactly what it is for and exactly what nothing else
+// should do.
+export function useToastList() {
+  return useContext(ToastStateContext)
 }

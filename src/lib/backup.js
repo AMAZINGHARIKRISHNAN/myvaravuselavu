@@ -10,7 +10,7 @@ const COLLECTIONS = ['expenses', 'income', 'transfers', 'friendPurchases', 'recu
 
 // Firestore Timestamps don't survive JSON — tag them so restore can turn
 // them back into real dates instead of dead {seconds, nanoseconds} husks.
-export function serializeValue(value) {
+function serializeValue(value) {
   if (value && typeof value.toDate === 'function') {
     return { __type: 'timestamp', value: value.toDate().toISOString() }
   }
@@ -20,7 +20,7 @@ export function serializeValue(value) {
   return value
 }
 
-export function deserializeValue(value) {
+function deserializeValue(value) {
   if (value && typeof value === 'object' && value.__type === 'timestamp') {
     return new Date(value.value)
   }

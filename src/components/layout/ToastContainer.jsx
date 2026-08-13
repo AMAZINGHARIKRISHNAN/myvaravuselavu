@@ -1,7 +1,9 @@
-import { useToast } from '../../context/ToastContext'
+import { useToast, useToastList } from '../../context/ToastContext'
 
 export default function ToastContainer() {
-  const { toasts, dismiss } = useToast()
+  // The one component that wants to re-render on every toast.
+  const toasts = useToastList()
+  const { dismiss } = useToast()
 
   if (toasts.length === 0) return null
 

@@ -42,7 +42,7 @@ export const typeMeta = (key) =>
 export const RECEIPT_REQUIRED_ABOVE = 3000
 
 // How long the office gives you to file something before it's awkward.
-export const STALE_AFTER_DAYS = 60
+const STALE_AFTER_DAYS = 60
 
 // Everything wrong with a line, checked before you submit rather than after
 // the office sends it back.
@@ -65,7 +65,7 @@ export function itemIssues(item, today = new Date()) {
 
 // One shape for every claimable line, whether you typed it or the commute
 // tracker logged it, so the list and the report math treat them alike.
-export function itemLine(item) {
+function itemLine(item) {
   return {
     id: item.id,
     kind: 'item',
@@ -88,7 +88,7 @@ export function itemLine(item) {
 
 // A day of commuting is one line: both legs, one fare total. Editing them
 // stays on the Commute page — here they're only claimed.
-export function commuteDayLine(dayKey, trips) {
+function commuteDayLine(dayKey, trips) {
   const amount = trips.reduce((s, t) => s + (t.amount || 0), 0)
   return {
     id: `commute-${dayKey}`,

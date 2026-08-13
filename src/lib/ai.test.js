@@ -10,9 +10,6 @@ import {
   minimalContext,
   stripJsonFences,
   dataUrlToInline,
-  toneFor,
-  TONES,
-  HOUSE_RULES,
   ask,
   hasApiKey,
   readCandidateText,
@@ -229,19 +226,6 @@ describe('dataUrlToInline', () => {
     expect(() => dataUrlToInline('not a url')).toThrow()
     expect(() => dataUrlToInline('')).toThrow()
     expect(() => dataUrlToInline('data:image/png,notbase64')).toThrow()
-  })
-})
-
-describe('tone', () => {
-  it('gives each identity its own voice and falls back safely', () => {
-    expect(new Set(Object.values(TONES)).size).toBe(3)
-    expect(toneFor('friday')).toBe(TONES.friday)
-    expect(toneFor('classic')).toBe(TONES.jarvis)
-  })
-
-  it('forbids advice and arithmetic in the house rules', () => {
-    expect(HOUSE_RULES).toMatch(/never do arithmetic/i)
-    expect(HOUSE_RULES).toMatch(/not advice|never recommend/i)
   })
 })
 

@@ -27,13 +27,17 @@ export default function SourceHistorySheet({ source, data, onUndo, onUndoEntry, 
   const since = source.since || null
   const isCard = PREPAID_CARDS.some((c) => c.name === source.name)
   const counts = (r) => !since || !r.date || r.date >= since
-  const skipped = rows.filter((r) => !counts(r)).length
+  // Partitioned once. The counted rows drive the total, the count and the
+  // wording, and filtering the same list for each of them was three extra
+  // passes over the whole history every render.
+  const counted = rows.filter(counts)
+  const skipped = rows.length - counted.length
 
   // The sum this list adds up to. Listing movements without ever totalling
   // them means a balance can only be taken on trust — this is the arithmetic
   // written out, so `opening + movement` can be checked against the figure on
   // the card with your own eyes.
-  const movement = rows.filter(counts).reduce((s, r) => s + r.amount, 0)
+  const movement = counted.reduce((s, r) => s + r.amount, 0)
 
   const opening = Number.isFinite(source.opening) ? source.opening : null
   const closing = opening === null ? null : opening + movement
@@ -52,8 +56,8 @@ export default function SourceHistorySheet({ source, data, onUndo, onUndoEntry, 
           )}
           <div className="mt-1 flex items-center justify-between gap-2">
             <span className="text-gray-500 dark:text-gray-400">
-              {rows.filter(counts).length} movement
-              {rows.filter(counts).length === 1 ? '' : 's'} since
+              {counted.length} movement
+              {counted.length === 1 ? '' : 's'} since
             </span>
             <span
               className={`tabular-nums font-medium ${
