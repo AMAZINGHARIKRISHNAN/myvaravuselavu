@@ -192,7 +192,10 @@ export default function JarvisSheet({ onClose, onLog }) {
       const fallback = story
         ? {
             intent: 'unknown',
-            speech: 'That reads like a story rather than a question. Turn on Conversational entry in Settings and I can file it.',
+            // Reachable only if the switch was turned off deliberately, or
+            // there is no key — so it names the actual reason rather than
+            // instructing someone to enable what is already on by default.
+            speech: 'That reads like a story, but conversational entry is switched off — turn it back on in Settings and I can file it.',
             lines: [],
             to: null,
           }
@@ -426,10 +429,15 @@ export default function JarvisSheet({ onClose, onLog }) {
         </button>
       </form>
 
+      {/* This said "nothing is sent anywhere", which stopped being true the
+          moment the assistant started reading stories. Questions really are
+          answered on the phone; a story really does leave it. Saying both is
+          the only honest version, and which one applies depends on what was
+          just typed. */}
       <p className="text-[11px] text-gray-400 dark:text-gray-500">
-        {latest?.intent === 'unknown'
-          ? 'I only know your own records — no internet lookups.'
-          : 'Answers are worked out on this phone from your own records. Nothing is sent anywhere.'}
+        {draft
+          ? "Read by Google's model from what you typed, plus your account and category names. Nothing else left the phone."
+          : 'Questions are answered on this phone from your own records. A story it cannot parse is sent to the model to read.'}
       </p>
     </BottomSheet>
   )

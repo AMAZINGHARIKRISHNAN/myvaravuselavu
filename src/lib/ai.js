@@ -68,12 +68,25 @@ export const AI_FEATURES = [
 
 const isAiFeature = (key) => AI_FEATURES.some((f) => f.key === key)
 
+// ON unless explicitly turned off.
+//
+// This was opt-in, which is the right default for an app with users who did
+// not choose its trade-offs. This app has exactly one user, it is his own key,
+// his own data and his own free-tier quota, and making him find a settings
+// screen before a feature works is friction protecting nobody. The switches
+// stay so anything can be turned off; they just start on.
+//
+// Only a feature that is actually BUILT counts. `ready: false` means the code
+// is not there, and defaulting those on would enable a thing that cannot work.
 export function aiEnabled(feature) {
-  if (!isAiFeature(feature)) return false
+  const spec = AI_FEATURES.find((f) => f.key === feature)
+  if (!spec?.ready) return false
   try {
-    return localStorage.getItem(FLAG_PREFIX + feature) === 'on'
+    return localStorage.getItem(FLAG_PREFIX + feature) !== 'off'
   } catch {
-    return false
+    // Private mode, or storage blocked. On is the useful answer, and the rate
+    // guard still applies in memory.
+    return true
   }
 }
 

@@ -51,15 +51,36 @@ function stubFetch(text, { status = 200, body, reject = false } = {}) {
   return calls
 }
 
+// A feature that is actually built. The gate refuses anything with
+// `ready: false`, so a test asserting the gate must use one that passes it.
+const BUILT = AI_FEATURES.find((f) => f.ready).key
+const OTHER_BUILT = AI_FEATURES.filter((f) => f.ready)[1]?.key
+
 describe('feature flags', () => {
-  it('is off for every feature by default', () => {
-    for (const f of AI_FEATURES) expect(aiEnabled(f.key)).toBe(false)
+  // On unless turned off: one user, his own key, his own data. Making him find
+  // a settings screen before a feature works protects nobody.
+  it('is on by default for every feature that is built', () => {
+    for (const f of AI_FEATURES.filter((x) => x.ready)) expect(aiEnabled(f.key)).toBe(true)
+  })
+
+  // `ready: false` means the code is not there. Defaulting those on would
+  // enable something that cannot work.
+  it('is off for a feature that is not built yet', () => {
+    for (const f of AI_FEATURES.filter((x) => !x.ready)) expect(aiEnabled(f.key)).toBe(false)
+  })
+
+  it('stays off once turned off', () => {
+    const built = AI_FEATURES.find((f) => f.ready).key
+    setAiEnabled(built, false)
+    expect(aiEnabled(built)).toBe(false)
+    setAiEnabled(built, true)
+    expect(aiEnabled(built)).toBe(true)
   })
 
   it('turns features on independently', () => {
-    setAiEnabled('receipts', true)
-    expect(aiEnabled('receipts')).toBe(true)
-    expect(aiEnabled('assistant')).toBe(false)
+    setAiEnabled(BUILT, false)
+    expect(aiEnabled(BUILT)).toBe(false)
+    expect(aiEnabled(OTHER_BUILT ?? BUILT)).toBe(OTHER_BUILT ? true : false)
   })
 
   it('refuses a feature name it does not know', () => {
@@ -72,26 +93,29 @@ describe('feature flags', () => {
       getItem: () => { throw new Error('blocked') },
       setItem: () => { throw new Error('blocked') },
     }
-    expect(aiEnabled('assistant')).toBe(false)
-    expect(() => setAiEnabled('assistant', true)).not.toThrow()
+    // On is the useful answer when the switch cannot be read; the rate guard
+    // still applies in memory.
+    expect(aiEnabled(BUILT)).toBe(true)
+    expect(() => setAiEnabled(BUILT, true)).not.toThrow()
   })
 })
 
 describe('isAvailable', () => {
-  it('is false while the feature is off, even online', () => {
-    expect(isAvailable('assistant')).toBe(false)
+  it('is false once the feature is turned off, even online', () => {
+    setAiEnabled(BUILT, false)
+    expect(isAvailable(BUILT)).toBe(false)
   })
 
   it('is true once on, online and under the rate guard', () => {
-    setAiEnabled('assistant', true)
-    expect(isAvailable('assistant')).toBe(true)
+    setAiEnabled(BUILT, true)
+    expect(isAvailable(BUILT)).toBe(true)
   })
 
   // The single most important line in the file: offline means local.
   it('is false offline', () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     vi.stubGlobal('navigator', { onLine: false })
-    expect(isAvailable('assistant')).toBe(false)
+    expect(isAvailable(BUILT)).toBe(false)
   })
 
   it('treats an environment without navigator as online', () => {
@@ -106,23 +130,23 @@ describe('rate guard', () => {
   })
 
   it('debounces a double-tap', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch('ok')
-    await ask('one', { feature: 'assistant' })
-    await expect(ask('two', { feature: 'assistant' })).rejects.toThrow(/debounce/)
+    await ask('one', { feature: BUILT })
+    await expect(ask('two', { feature: BUILT })).rejects.toThrow(/debounce/)
   })
 
   it('stops a loop at the per-minute ceiling', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch('ok')
     let now = 1_000_000
     vi.spyOn(Date, 'now').mockImplementation(() => now)
     for (let i = 0; i < 15; i++) {
       now += 1000 // past the debounce, inside the minute
-      await ask(`q${i}`, { feature: 'assistant' })
+      await ask(`q${i}`, { feature: BUILT })
     }
     now += 1000
-    await expect(ask('one too many', { feature: 'assistant' })).rejects.toThrow(/rpm/)
+    await expect(ask('one too many', { feature: BUILT })).rejects.toThrow(/rpm/)
     Date.now.mockRestore()
   })
 
@@ -231,10 +255,10 @@ describe('dataUrlToInline', () => {
 
 describe('ask', () => {
   it('POSTs the documented generateContent shape with the key in a header', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     const calls = stubFetch('All systems nominal.')
 
-    await expect(ask('status?', { feature: 'assistant' })).resolves.toBe('All systems nominal.')
+    await expect(ask('status?', { feature: BUILT })).resolves.toBe('All systems nominal.')
     expect(calls[0].url).toBe(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent'
     )
@@ -245,17 +269,16 @@ describe('ask', () => {
 
   // The key belongs in a header, not a query string, so it stays out of logs.
   it('never puts the key in the URL', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     const calls = stubFetch('ok')
-    await ask('x', { feature: 'assistant' })
+    await ask('x', { feature: BUILT })
     expect(calls[0].url).not.toMatch(/key=/)
   })
 
   it('appends an image as a second inlineData part', async () => {
-    setAiEnabled('receipts', true)
     const calls = stubFetch('{}')
 
-    await ask('read this', { feature: 'receipts', image: 'data:image/jpeg;base64,ZZZ' })
+    await ask('read this', { feature: BUILT, image: 'data:image/jpeg;base64,ZZZ' })
     expect(calls[0].body.contents[0].parts).toEqual([
       { text: 'read this' },
       { inlineData: { mimeType: 'image/jpeg', data: 'ZZZ' } },
@@ -263,9 +286,8 @@ describe('ask', () => {
   })
 
   it('parses JSON when asked to', async () => {
-    setAiEnabled('receipts', true)
     stubFetch(['```json', '{"total":1240}', '```'].join('\n'))
-    await expect(ask('x', { feature: 'receipts', json: true })).resolves.toEqual({ total: 1240 })
+    await expect(ask('x', { feature: BUILT, json: true })).resolves.toEqual({ total: 1240 })
   })
 
   it('joins text split across several parts', () => {
@@ -279,78 +301,87 @@ describe('ask', () => {
   // Every one of these is a case where the caller must fall back to local.
   it('throws when no key is configured, without calling out', async () => {
     vi.stubEnv('VITE_GEMINI_API_KEY', '')
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     const calls = stubFetch('ok')
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/no API key/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/no API key/)
     expect(calls).toHaveLength(0)
     expect(hasApiKey()).toBe(false)
   })
 
-  it('throws when the feature is off', async () => {
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/feature off/)
+  it('throws when the feature has been turned off', async () => {
+    setAiEnabled(BUILT, false)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/feature off/)
+  })
+
+  // A feature whose code is not written must refuse regardless of any switch.
+  it('throws for a feature that is not built', async () => {
+    const unbuilt = AI_FEATURES.find((f) => !f.ready)
+    if (!unbuilt) return
+    setAiEnabled(unbuilt.key, true)
+    await expect(ask('x', { feature: unbuilt.key })).rejects.toThrow(/feature off/)
   })
 
   it('throws when offline', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     vi.stubGlobal('navigator', { onLine: false })
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/offline/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/offline/)
   })
 
   // The two errors the user will actually hit while setting the key up, so
   // Google's own wording is surfaced rather than paraphrased.
   it('surfaces a bad-key message verbatim', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch(null, { status: 400, body: { error: { message: 'API key not valid.' } } })
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/API key not valid/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/API key not valid/)
   })
 
   it('surfaces a referrer-blocked message verbatim', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch(null, {
       status: 403,
       body: { error: { message: 'Requests from referer https://evil.example/ are blocked.' } },
     })
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/are blocked/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/are blocked/)
   })
 
   it('falls back to the status code when the error body is not JSON', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     vi.stubGlobal('fetch', () =>
       Promise.resolve({ ok: false, status: 500, json: () => Promise.reject(new Error('nope')) })
     )
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/HTTP 500/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/HTTP 500/)
   })
 
   it('throws on a network failure rather than hanging', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch(null, { reject: true })
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/network request failed/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/network request failed/)
   })
 
   // A refused prompt comes back 200 with no candidate at all.
   it('throws when the prompt was safety-blocked', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch(null, { body: { promptFeedback: { blockReason: 'SAFETY' } } })
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/blocked \(SAFETY\)/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/blocked \(SAFETY\)/)
   })
 
   it('throws rather than returning unparseable JSON', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch('I am afraid I cannot do that')
-    await expect(ask('x', { feature: 'assistant', json: true })).rejects.toThrow(/not JSON/)
+    await expect(ask('x', { feature: BUILT, json: true })).rejects.toThrow(/not JSON/)
   })
 
   it('throws on an empty response instead of returning nothing', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch('')
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow(/empty/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/empty/)
   })
 
   // A failing call still spends quota, so it must still count.
   it('counts a failed call against the rate guard', async () => {
-    setAiEnabled('assistant', true)
+    setAiEnabled(BUILT, true)
     stubFetch(null, { status: 500, body: {} })
-    await expect(ask('x', { feature: 'assistant' })).rejects.toThrow()
-    await expect(ask('y', { feature: 'assistant' })).rejects.toThrow(/debounce/)
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow()
+    await expect(ask('y', { feature: BUILT })).rejects.toThrow(/debounce/)
   })
 })
