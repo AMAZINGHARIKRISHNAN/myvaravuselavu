@@ -50,6 +50,24 @@ function PageLoading() {
   )
 }
 
+// One route, wrapped so a failure inside it stays inside it.
+//
+// A single boundary at the root meant one screen throwing took the navigation
+// down with it — the app was a blank error page you could not leave, on a
+// device where the only way out is force-quitting. Per route, the tabs and the
+// header survive and every other screen still works.
+//
+// `key` is what makes leaving possible: React keeps a boundary's error state
+// until the subtree remounts, so without it a crashed route would stay crashed
+// even after navigating away and back.
+function Page({ name, children }) {
+  return (
+    <ErrorBoundary key={name} label={name}>
+      <Suspense fallback={<PageLoading />}>{children}</Suspense>
+    </ErrorBoundary>
+  )
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -68,26 +86,26 @@ function App() {
                     </RequireAuth>
                   }
                 >
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/" element={<Page name="Dashboard"><Dashboard /></Page>} />
                   {/* One Suspense boundary per lazy page keeps the shell (tabs,
                       header) mounted while only the content area shimmers. */}
-                  <Route path="/charts" element={<Suspense fallback={<PageLoading />}><Charts /></Suspense>} />
-                  <Route path="/transfers" element={<Suspense fallback={<PageLoading />}><Transfers /></Suspense>} />
-                  <Route path="/friends" element={<Suspense fallback={<PageLoading />}><Friends /></Suspense>} />
-                  <Route path="/groups" element={<Suspense fallback={<PageLoading />}><Groups /></Suspense>} />
-                  <Route path="/commute" element={<Suspense fallback={<PageLoading />}><Commute /></Suspense>} />
-                  <Route path="/balances" element={<Suspense fallback={<PageLoading />}><Balances /></Suspense>} />
-                  <Route path="/cash" element={<Suspense fallback={<PageLoading />}><Cash /></Suspense>} />
-                  <Route path="/reimbursements" element={<Suspense fallback={<PageLoading />}><Reimbursements /></Suspense>} />
-                  <Route path="/profit" element={<Suspense fallback={<PageLoading />}><Profit /></Suspense>} />
-                  <Route path="/shopping" element={<Suspense fallback={<PageLoading />}><Shopping /></Suspense>} />
-                  <Route path="/notes" element={<Suspense fallback={<PageLoading />}><Notes /></Suspense>} />
-                  <Route path="/review" element={<Suspense fallback={<PageLoading />}><Review /></Suspense>} />
-                  <Route path="/audit" element={<Suspense fallback={<PageLoading />}><Audit /></Suspense>} />
-                  <Route path="/reconcile" element={<Suspense fallback={<PageLoading />}><Reconcile /></Suspense>} />
-                  <Route path="/history" element={<Suspense fallback={<PageLoading />}><History /></Suspense>} />
-                  <Route path="/payslips" element={<Suspense fallback={<PageLoading />}><Payslips /></Suspense>} />
-                  <Route path="/settings" element={<Suspense fallback={<PageLoading />}><Settings /></Suspense>} />
+                  <Route path="/charts" element={<Page name="Charts"><Charts /></Page>} />
+                  <Route path="/transfers" element={<Page name="Transfers"><Transfers /></Page>} />
+                  <Route path="/friends" element={<Page name="Friends"><Friends /></Page>} />
+                  <Route path="/groups" element={<Page name="Groups"><Groups /></Page>} />
+                  <Route path="/commute" element={<Page name="Commute"><Commute /></Page>} />
+                  <Route path="/balances" element={<Page name="Balances"><Balances /></Page>} />
+                  <Route path="/cash" element={<Page name="Cash"><Cash /></Page>} />
+                  <Route path="/reimbursements" element={<Page name="Reimbursements"><Reimbursements /></Page>} />
+                  <Route path="/profit" element={<Page name="Profit"><Profit /></Page>} />
+                  <Route path="/shopping" element={<Page name="Shopping"><Shopping /></Page>} />
+                  <Route path="/notes" element={<Page name="Notes"><Notes /></Page>} />
+                  <Route path="/review" element={<Page name="Review"><Review /></Page>} />
+                  <Route path="/audit" element={<Page name="Audit"><Audit /></Page>} />
+                  <Route path="/reconcile" element={<Page name="Reconcile"><Reconcile /></Page>} />
+                  <Route path="/history" element={<Page name="History"><History /></Page>} />
+                  <Route path="/payslips" element={<Page name="Payslips"><Payslips /></Page>} />
+                  <Route path="/settings" element={<Page name="Settings"><Settings /></Page>} />
                 </Route>
               </Routes>
             </AuthProvider>
