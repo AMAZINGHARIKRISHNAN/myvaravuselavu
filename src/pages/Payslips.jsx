@@ -10,7 +10,14 @@ import { formatJPY, formatINR } from '../lib/format'
 import { readPayslipPdf, checkParsedPayslip, toNumber } from '../lib/payslipParse'
 import { englishFor } from '../lib/payslipTerms'
 import { payslipFileKind } from '../lib/payslip'
-import { monthlyPayAndSend, sendingSummary, compareSlips, netOf, grossOf } from '../lib/payslipAnalysis'
+import {
+  monthlyPayAndSend,
+  sendingSummary,
+  compareSlips,
+  detectDeductionSteps,
+  netOf,
+  grossOf,
+} from '../lib/payslipAnalysis'
 import EmptyState from '../components/ui/EmptyState'
 import Skeleton from '../components/ui/Skeleton'
 import BottomSheet from '../components/ui/BottomSheet'
@@ -128,6 +135,9 @@ export default function Payslips() {
     [slips, transfers.data, expenses.data]
   )
   const summary = useMemo(() => sendingSummary(rows), [rows])
+  // Deductions that changed rate and stayed changed — 住民税 starting in June,
+  // 社会保険 re-graded in September. Both are easy to miss on a slip you skim.
+  const steps = useMemo(() => detectDeductionSteps(slips), [slips])
 
   const pick = () => fileRef.current?.click()
 
@@ -292,6 +302,9 @@ export default function Payslips() {
 
       {/* ---- Earned → sent home → kept ------------------------------------ */}
       {rows.length > 0 && <SendingPanel rows={rows} summary={summary} onOpen={setOpenMonth} />}
+
+      {/* ---- Rate changes -------------------------------------------------- */}
+      {steps.length > 0 && <StepsPanel steps={steps} />}
 
       {/* ---- The slips ----------------------------------------------------- */}
       {slips.length === 0 ? (
@@ -522,6 +535,56 @@ function Stat({ label, value, sub, good, bad, subStrong }) {
 }
 
 // ---- One month, in full -----------------------------------------------------
+
+// Deductions that changed rate and kept the new one.
+//
+// The two that matter here are both invisible until they have already happened:
+// 住民税 is not deducted at all in your first year and then starts in June at a
+// rate set by last year's income, and 社会保険 is re-graded every September. Each
+// quietly takes a few thousand yen a month off every future payslip, and the
+// only place it shows is a line you have no reason to compare month to month.
+//
+// The annual figure is the point. A ¥18,500 line reads as small; ¥222,000 a
+// year does not.
+function StepsPanel({ steps }) {
+  return (
+    <section className="card space-y-2.5 p-4">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+        <span aria-hidden="true">📈</span>
+        Deductions that changed rate
+      </h2>
+      <div className="space-y-2">
+        {steps.map((step) => (
+          <div
+            key={`${step.ja}-${step.period}`}
+            className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300"
+          >
+            <p className="font-semibold">
+              {step.ja}
+              {step.en && ` · ${step.en}`}
+              <span className="font-normal text-amber-700/80 dark:text-amber-400/70">
+                {' '}
+                — from {step.period}
+              </span>
+            </p>
+            <p className="mt-0.5 tabular-nums">
+              {formatJPY(step.from)} → {formatJPY(step.to)}{' '}
+              <span className="font-semibold">
+                ({step.change > 0 ? '+' : '−'}
+                {formatJPY(Math.abs(step.change))}/month)
+              </span>
+            </p>
+            <p className="mt-0.5 text-[11px] text-amber-700/80 dark:text-amber-400/70">
+              {step.change > 0 ? 'Costs' : 'Saves'} about{' '}
+              {formatJPY(Math.abs(step.annualImpact))} across a year.
+              {step.provisional && ' Seen once so far — next month will confirm it.'}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 function MonthSheet({ period, slips, row, onClose }) {
   const slip = slips.find((s) => s.period === period)
