@@ -8,7 +8,7 @@ import { useRecurring } from '../../hooks/useRecurring'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { askJarvis, JARVIS_EXAMPLES } from '../../lib/jarvis'
 import { ask, isAvailable } from '../../lib/ai'
-import { buildPrompt, validateDraft, vocabulary } from '../../lib/storyIntake'
+import { buildPrompt, looksLikeStory, validateDraft, vocabulary } from '../../lib/storyIntake'
 import StoryDraft from '../entry/StoryDraft'
 import { personaSpeech } from '../../lib/persona'
 import { useTheme } from '../../context/ThemeContext'
@@ -170,17 +170,35 @@ export default function JarvisSheet({ onClose, onLog }) {
     const answer = askJarvis(q, ctx)
     setTyped('')
 
-    if (answer.intent !== 'unknown') {
+    // A confident wrong answer is worse than none. Handed a paragraph, the
+    // local parser does not refuse — it finds the first number and believes
+    // it, so a trip to India came back as "Logging 12 yen for other" because
+    // "12 Sep" contains a 12. Prose is never a one-line log, whatever the
+    // parser managed to extract from it.
+    const story = looksLikeStory(q)
+
+    if (answer.intent !== 'unknown' && !(story && answer.intent === 'log')) {
       const spoken = personaSpeech(skin, answer)
       setEntries((prev) => [...prev, { q, answer: { ...answer, speech: spoken } }])
       if (voiceOn) speak(spoken)
       return
     }
 
-    // Not a question it knows. Before giving up, see whether it is a story.
+    // Not something it can answer locally. Before giving up, see if the model
+    // can read it as a story.
     if (!isAvailable('entry')) {
-      const spoken = personaSpeech(skin, answer)
-      setEntries((prev) => [...prev, { q, answer: { ...answer, speech: spoken } }])
+      // A misread paragraph must not be offered as a ¥12 expense just because
+      // the assistant is switched off.
+      const fallback = story
+        ? {
+            intent: 'unknown',
+            speech: 'That reads like a story rather than a question. Turn on Conversational entry in Settings and I can file it.',
+            lines: [],
+            to: null,
+          }
+        : answer
+      const spoken = personaSpeech(skin, fallback)
+      setEntries((prev) => [...prev, { q, answer: { ...fallback, speech: spoken } }])
       if (voiceOn) speak(spoken)
       return
     }
@@ -192,8 +210,11 @@ export default function JarvisSheet({ onClose, onLog }) {
       if (parsed.records.length === 0) throw new Error('nothing in it')
       setDraft(parsed)
     } catch {
-      const spoken = personaSpeech(skin, answer)
-      setEntries((prev) => [...prev, { q, answer: { ...answer, speech: spoken } }])
+      const failed = story
+        ? { intent: 'unknown', speech: 'I could not read that one — try the normal form.', lines: [], to: null }
+        : answer
+      const spoken = personaSpeech(skin, failed)
+      setEntries((prev) => [...prev, { q, answer: { ...failed, speech: spoken } }])
       if (voiceOn) speak(spoken)
     } finally {
       setReading(false)

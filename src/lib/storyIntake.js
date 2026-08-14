@@ -26,6 +26,30 @@ import { CATEGORIES, NON_ACCOUNT_PAYMENT_METHODS } from './constants'
 import { sourceCountry } from './currencyAudit'
 import { LOSS_KINDS } from './loss'
 
+// Is this a story, or a quick one-line log?
+//
+// The local parser exists for "900 lunch edenred" and is good at it. Handed a
+// paragraph it does not refuse — it finds the first number and believes it. A
+// 45-word description of a trip to India came back as "Logging 12 yen for
+// other", because "12 Sep" contains a 12. A confident wrong answer is worse
+// than no answer, and it never reached the model that would have read it
+// properly, because nothing had reported a failure.
+//
+// So length decides, before the parse is trusted. A real quick log is a
+// handful of words; anything longer is prose and belongs to the model. The
+// threshold is deliberately generous — "spent 3400 at aeon on groceries
+// yesterday with the rakuten card" is eleven words and still a one-liner.
+export const STORY_WORDS = 12
+
+export function looksLikeStory(input = '') {
+  const t = String(input).trim()
+  if (!t) return false
+  const words = t.split(/\s+/).length
+  if (words >= STORY_WORDS) return true
+  // Two sentences is a story however short they are.
+  return (t.match(/[.!?](\s|$)/g) || []).length >= 2
+}
+
 // The kinds of record a story can produce. Deliberately small: these are the
 // four that carry money, and anything else is better typed than guessed.
 export const RECORD_KINDS = ['expense', 'income', 'trip', 'loss']

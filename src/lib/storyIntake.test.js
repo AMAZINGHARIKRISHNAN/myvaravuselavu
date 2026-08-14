@@ -3,6 +3,7 @@ import {
   applyAnswer,
   buildPrompt,
   checkOps,
+  looksLikeStory,
   questionFor,
   toOps,
   validateDraft,
@@ -277,5 +278,50 @@ describe('what actually reaches the database', () => {
   it('keeps the answered currency for cash, which has no fixed one', () => {
     const ops = toOps([{ kind: 'expense', amount: 500, paymentMethod: 'Cash', country: 'IN' }])
     expect(ops[0].data([]).country).toBe('IN')
+  })
+})
+
+// The bug: a 45-word description of a trip came back as "Logging 12 yen for
+// other" — the local parser found the 12 in "12 Sep" and believed it. A
+// confident wrong answer never reports a failure, so nothing ever fell through
+// to the model that would have read it properly.
+describe('telling a story from a quick log', () => {
+  const QUICK = [
+    '900 lunch edenred',
+    'paid 1200 for dinner with pasmo',
+    'spent 3400 at aeon on groceries yesterday with the rakuten card',
+    '280 bus',
+  ]
+  const STORIES = [
+    'Trip to India for my college graduation on 12 Sep. Flying out 11 Sep, landing back in Japan 4 Oct, Cathay Pacific. Paid 131080 from MUFJ on 2 Aug for the ticket, and 4700 of that was the extra baggage fee from Chennai to Japan.',
+    'sep 12 my clg graduation in india so i have to go for that so i booked flight the picup date is sep 11 and the drop in japan date is oct 4',
+    'Bought lunch. Then paid for the train.',
+  ]
+
+  it('leaves a quick log to the local parser', () => {
+    for (const t of QUICK) expect(looksLikeStory(t), t).toBe(false)
+  })
+
+  it('sends prose to the model', () => {
+    for (const t of STORIES) expect(looksLikeStory(t), t).toBe(true)
+  })
+
+  it('treats two sentences as a story however short', () => {
+    expect(looksLikeStory('Bought lunch. Paid by card.')).toBe(true)
+  })
+
+  it('says no to nothing at all', () => {
+    expect(looksLikeStory('')).toBe(false)
+    expect(looksLikeStory('   ')).toBe(false)
+    expect(looksLikeStory()).toBe(false)
+  })
+
+  // The exact sentence that produced "Logging 12 yen for other".
+  it('would have caught the ¥12 misread', () => {
+    expect(
+      looksLikeStory(
+        'Trip to India for my college graduation on 12 Sep. Flying out 11 Sep, landing back in Japan 4 Oct, Cathay Pacific.'
+      )
+    ).toBe(true)
   })
 })
