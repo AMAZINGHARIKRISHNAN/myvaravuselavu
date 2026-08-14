@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Trash2, Plane } from 'lucide-react'
+import { Trash2, Plus } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
 import { useBatchOps } from '../hooks/useBatchOps'
 import { useToast } from '../context/ToastContext'
@@ -26,7 +26,6 @@ import {
 } from '../lib/trips'
 import BottomSheet from '../components/ui/BottomSheet'
 import EmptyState from '../components/ui/EmptyState'
-import FloatingActionButton from '../components/ui/FloatingActionButton'
 import Skeleton from '../components/ui/Skeleton'
 
 // Trips: what one journey actually cost.
@@ -64,11 +63,22 @@ export default function Trips() {
         </p>
       </header>
 
+      {/* On the page rather than floating over it: a round button in the corner
+          is a guess you have to make, and there is room here to just say it. */}
+      <button
+        type="button"
+        onClick={() => setEditing({})}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-500/40 py-3.5 text-sm font-semibold text-indigo-500 transition-transform active:scale-[0.99] touch-manipulation hover:border-indigo-500/60 hover:bg-indigo-500/5 dark:text-indigo-400"
+      >
+        <Plus size={16} aria-hidden="true" />
+        New trip
+      </button>
+
       {rows.length === 0 ? (
         <EmptyState
           icon="🧳"
           title="No trips yet"
-          hint="Add one with its dates, and everything you spend while it runs tags itself."
+          hint="Add one with its dates, and everything you spend while it runs tags itself to it."
         />
       ) : (
         <div className="space-y-3">
@@ -110,8 +120,6 @@ export default function Trips() {
           ))}
         </div>
       )}
-
-      <FloatingActionButton label="Add a trip" onClick={() => setEditing({})} />
 
       {editing && <TripForm initial={editing.id ? editing : null} onClose={() => setEditing(null)} />}
       {openTrip && (
