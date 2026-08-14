@@ -9,7 +9,6 @@ import {
   tagOps,
   tripExpenses,
   tripLength,
-  tripLosses,
   tripTotals,
   trueCost,
   untagOps,

@@ -7,6 +7,9 @@ import { useAccountBalances } from '../../hooks/useAccountBalances'
 import { useRecurring } from '../../hooks/useRecurring'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { askJarvis, JARVIS_EXAMPLES } from '../../lib/jarvis'
+import { ask, isAvailable } from '../../lib/ai'
+import { buildPrompt, validateDraft, vocabulary } from '../../lib/storyIntake'
+import StoryDraft from '../entry/StoryDraft'
 import { personaSpeech } from '../../lib/persona'
 import { useTheme } from '../../context/ThemeContext'
 import { cardBalance, PREPAID_CARDS } from '../../lib/wallet'
@@ -52,6 +55,8 @@ export default function JarvisSheet({ onClose, onLog }) {
   const allExpenses = useCollection('expenses')
   const officeItems = useCollection('officeReimbursements')
   const trips = useCollection('commuteTrips')
+  // Journeys, not commute days — the name is taken in this file.
+  const journeys = useCollection('trips')
   const claims = useCollection('commuteClaims')
   const passes = useCollection('commutePasses')
   const orders = useCollection('onlineOrders')
@@ -63,6 +68,9 @@ export default function JarvisSheet({ onClose, onLog }) {
 
   const [entries, setEntries] = useState([]) // {q, answer}
   const [typed, setTyped] = useState('')
+  // A story the model read out of what was typed, waiting to be confirmed.
+  const [draft, setDraft] = useState(null)
+  const [reading, setReading] = useState(false)
   const [voiceOn, setVoiceOn] = useState(() => localStorage.getItem(VOICE_KEY) !== 'off')
   const scrollRef = useRef(null)
 
@@ -146,17 +154,57 @@ export default function JarvisSheet({ onClose, onLog }) {
     losses.data,
   ])
 
-  const run = (question) => {
+  // One box for both jobs: asking about your money, and telling it what you
+  // did with it. They were two buttons and there is no reason a person should
+  // have to decide which one their sentence is before typing it.
+  //
+  // LOCAL FIRST, always. askJarvis answers instantly, offline, for free, and
+  // handles every question the app knows how to answer plus simple one-line
+  // spending. The model is only reached for what it cannot parse — a story
+  // with several records in it — so the common case costs nothing.
+  const run = async (question) => {
     const q = question.trim()
     if (!q) return
     // The figures come from askJarvis and are identical under every suit;
     // personaSpeech only decides who is saying them and how.
     const answer = askJarvis(q, ctx)
-    const spoken = personaSpeech(skin, answer)
-    setEntries((prev) => [...prev, { q, answer: { ...answer, speech: spoken } }])
     setTyped('')
-    if (voiceOn) speak(spoken)
+
+    if (answer.intent !== 'unknown') {
+      const spoken = personaSpeech(skin, answer)
+      setEntries((prev) => [...prev, { q, answer: { ...answer, speech: spoken } }])
+      if (voiceOn) speak(spoken)
+      return
+    }
+
+    // Not a question it knows. Before giving up, see whether it is a story.
+    if (!isAvailable('entry')) {
+      const spoken = personaSpeech(skin, answer)
+      setEntries((prev) => [...prev, { q, answer: { ...answer, speech: spoken } }])
+      if (voiceOn) speak(spoken)
+      return
+    }
+
+    setReading(true)
+    try {
+      const reply = await ask(buildPrompt(q, vocab), { json: true, feature: 'entry' })
+      const parsed = validateDraft(reply, vocab)
+      if (parsed.records.length === 0) throw new Error('nothing in it')
+      setDraft(parsed)
+    } catch {
+      const spoken = personaSpeech(skin, answer)
+      setEntries((prev) => [...prev, { q, answer: { ...answer, speech: spoken } }])
+      if (voiceOn) speak(spoken)
+    } finally {
+      setReading(false)
+    }
   }
+
+  const accounts = settings?.accounts || []
+  const vocab = useMemo(
+    () => ({ ...vocabulary({ accounts, trips: journeys.data }), accountList: accounts }),
+    [accounts, journeys.data]
+  )
 
   const { supported: voiceInput, listening, start } = useSpeechRecognition({ onResult: run })
 
@@ -202,7 +250,7 @@ export default function JarvisSheet({ onClose, onLog }) {
             AT YOUR SERVICE
           </h2>
           <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-            {listening ? 'Listening…' : 'Ask about your money — out loud or typed'}
+            {listening ? 'Listening…' : 'Ask about your money, or tell it what you did'}
           </p>
         </div>
         <button
@@ -215,7 +263,41 @@ export default function JarvisSheet({ onClose, onLog }) {
         </button>
       </div>
 
+      {/* A story it read out of what you typed. Shown instead of an answer,
+          because there is nothing to answer — it is waiting for a yes. */}
+      {draft && (
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            That reads as {draft.records.length} record{draft.records.length === 1 ? '' : 's'}.
+            {draft.questions.length > 0 && ' A few things it would not guess:'}
+          </p>
+          <StoryDraft
+            draft={draft}
+            setDraft={setDraft}
+            vocab={vocab}
+            onDone={() => {
+              setDraft(null)
+              onClose()
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setDraft(null)}
+            className="w-full text-center text-[11px] text-gray-500 underline"
+          >
+            Discard this
+          </button>
+        </div>
+      )}
+
+      {reading && (
+        <p className="py-3 text-center text-xs text-cyan-600 dark:text-cyan-300">
+          Reading what you wrote…
+        </p>
+      )}
+
       {/* ---- Conversation ---- */}
+      {!draft && (
       <div ref={scrollRef} className="max-h-[38svh] space-y-3 overflow-y-auto">
         {entries.length === 0 ? (
           <div className="space-y-2">
@@ -283,6 +365,7 @@ export default function JarvisSheet({ onClose, onLog }) {
           ))
         )}
       </div>
+      )}
 
       {/* ---- Ask ---- */}
       <form

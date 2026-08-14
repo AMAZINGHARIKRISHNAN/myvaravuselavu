@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { House, ChartPie, Wallet, History, Settings, Send, Users, UsersRound, Briefcase, MoreHorizontal } from 'lucide-react'
+import { MoreHorizontal } from 'lucide-react'
 import { useTheme } from '../../context/ThemeContext'
 import ThemeToggle from './ThemeToggle'
 import GlobalSearch from './GlobalSearch'
