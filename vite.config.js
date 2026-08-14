@@ -46,6 +46,18 @@ export default defineConfig({
       },
     },
   },
+  // Component tests run in jsdom, declared per file with
+  //   // @vitest-environment jsdom
+  // at the top. Everything else stays a fast plain-node test — a thousand pure
+  // functions do not need a document.
+  //
+  // Added after a session in which every single defect that reached production
+  // was in the component layer — the one layer with no tests. The lib layer had
+  // a thousand and did not break once.
+  test: {
+    environment: 'node',
+    setupFiles: ['./vitest.setup.js'],
+  },
   plugins: [
     react(),
     tailwindcss(),
