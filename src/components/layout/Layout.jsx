@@ -9,6 +9,7 @@ import OfflineBanner from './OfflineBanner'
 import AuroraBackground from './AuroraBackground'
 import CelebrationLayer from './CelebrationLayer'
 import MoreSheet from './MoreSheet'
+import { TABS, GROUPS } from './navigation'
 import { OVERLAY_ROOT_ID } from '../ui/Portal'
 // Tiny, and needed on every navigation — so it rides in the main bundle rather
 // than costing a chunk fetch in the middle of a transition.
@@ -18,27 +19,6 @@ import HudRouteTransition from '../hud/HudRouteTransition'
 // of Framer Motion live in this chunk, which is only ever fetched when a HUD
 // suit is on. Classic and Neon never download it.
 const HudMount = lazy(() => import('../hud/HudMount'))
-
-// Five, because a phone tab bar cannot carry more and stay tappable: eight tabs
-// on a 360px screen is 45px each, under the 44px touch target once you allow for
-// spacing, which is why the labels used to truncate. Five gives each ~72px.
-// Everything else lives in the More sheet.
-const TABS = [
-  { to: '/', label: 'Home', Icon: House, end: true },
-  { to: '/history', label: 'History', Icon: History },
-  { to: '/charts', label: 'Charts', Icon: ChartPie },
-  { to: '/balances', label: 'Wallet', Icon: Wallet },
-]
-
-// The desktop sidebar has room, so it keeps the frequent destinations inline
-// rather than hiding them behind a sheet that exists for small screens.
-const SIDEBAR_EXTRA = [
-  { to: '/transfers', label: 'Transfers', Icon: Send },
-  { to: '/friends', label: 'Friends', Icon: Users },
-  { to: '/groups', label: 'Groups', Icon: UsersRound },
-  { to: '/reimbursements', label: 'Claims', Icon: Briefcase },
-  { to: '/settings', label: 'Settings', Icon: Settings },
-]
 
 function Brand() {
   return (
@@ -72,8 +52,21 @@ export default function Layout() {
         <div className="px-5 py-6">
           <Brand />
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3">
-          {[...TABS, ...SIDEBAR_EXTRA].map(({ to, label, Icon, end }) => (
+        {/* Every destination, not a hand-picked few. The sidebar used to carry
+            its own short list, so nine routes — Trips, Cash, Commute, Payslips
+            among them — existed with no way to reach them on a desktop at all. */}
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
+          {[
+            { title: null, items: TABS },
+            ...GROUPS,
+          ].map((section) => (
+            <div key={section.title || 'main'} className="space-y-1">
+              {section.title && (
+                <p className="px-3 pt-3 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                  {section.title}
+                </p>
+              )}
+              {section.items.map(({ to, label, Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -93,6 +86,8 @@ export default function Layout() {
                 </>
               )}
             </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="flex items-center justify-between border-t border-white/10 px-5 py-4 dark:border-white/5">
