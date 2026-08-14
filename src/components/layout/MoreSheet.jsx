@@ -1,7 +1,21 @@
 import { NavLink } from 'react-router-dom'
 import {
-  Send, Users, UsersRound, Briefcase, Bus, Wallet, Banknote, LineChart,
-  ShoppingBag, NotebookPen, ClipboardCheck, Calculator, ScanLine, Settings, ReceiptText,
+  Banknote,
+  Briefcase,
+  Bus,
+  Calculator,
+  ClipboardCheck,
+  LineChart,
+  NotebookPen,
+  Plane,
+  ReceiptText,
+  ScanLine,
+  Send,
+  Settings,
+  ShoppingBag,
+  Users,
+  UsersRound,
+  Wallet,
 } from 'lucide-react'
 import BottomSheet from '../ui/BottomSheet'
 
@@ -50,6 +64,7 @@ const GROUPS = [
   {
     title: 'Other',
     items: [
+      { to: '/trips', label: 'Trips', hint: 'What a journey cost', Icon: Plane },
       { to: '/notes', label: 'Notes', hint: 'Lists and reminders', Icon: NotebookPen },
       { to: '/balances', label: 'Wallet', hint: 'Every balance, every card', Icon: Wallet },
       { to: '/settings', label: 'Settings', hint: 'Accounts, budgets, the suit', Icon: Settings },

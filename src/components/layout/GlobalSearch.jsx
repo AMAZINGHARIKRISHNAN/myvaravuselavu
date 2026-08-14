@@ -45,6 +45,7 @@ function SearchSheet({ onClose }) {
   const friends = useCollection('friendPurchases')
   const orders = useCollection('onlineOrders')
   const notes = useCollection('notes')
+  const trips = useCollection('trips')
   const officeItems = useCollection('officeReimbursements')
 
   const q = query.trim().toLowerCase()
@@ -136,6 +137,18 @@ function SearchSheet({ onClose }) {
         })
       ),
       build(
+        '🧳 Trips',
+        '/trips',
+        trips.data.filter((r) => matches(q, r.name)),
+        (r) => ({
+          id: r.id,
+          title: r.name,
+          sub: r.endDate ? `until ${toDate(r.endDate)?.toLocaleDateString() ?? ''}` : 'no end date',
+          amount: '',
+          date: r.startDate ?? r.date,
+        })
+      ),
+      build(
         '📝 Notes',
         '/notes',
         notes.data.filter((r) => matches(q, r.text)),
@@ -156,6 +169,7 @@ function SearchSheet({ onClose }) {
     friends.data,
     orders.data,
     notes.data,
+    trips.data,
     officeItems.data,
   ])
 

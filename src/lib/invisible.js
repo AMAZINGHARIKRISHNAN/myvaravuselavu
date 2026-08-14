@@ -31,6 +31,7 @@ export const COLLECTIONS_WITH_DATES = [
   'cashCounts',
   'groupExpenses',
   'notes',
+  'trips',
 ]
 
 // A short, human summary — "3 expenses, 1 income" — so the count is not the

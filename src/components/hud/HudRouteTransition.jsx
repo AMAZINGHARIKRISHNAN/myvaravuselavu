@@ -30,6 +30,7 @@ const ROUTE_LABELS = {
   '/profit': 'YIELD',
   '/shopping': 'ORDERS',
   '/notes': 'NOTES',
+  '/trips': 'TRIPS',
   '/review': 'REVIEW',
   '/audit': 'AUDIT',
   '/reconcile': 'RECONCILE',

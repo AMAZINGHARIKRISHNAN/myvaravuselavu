@@ -17,6 +17,7 @@ import { normalizeStore, recordStore, topStores } from '../../lib/stores'
 import { isRouteCategory, normalizePlace, recentPlaces, recordPlaces, swapRoute } from '../../lib/route'
 import { fundingSources, countryOf } from '../../lib/money'
 import { CATEGORIES, CATEGORY_ICONS, methodCountry } from '../../lib/constants'
+import { activeTrip } from '../../lib/trips'
 import { groupOwner } from '../../lib/sharedGroups'
 
 const STEPS = ['amount', 'category', 'payment', 'confirm']
@@ -55,6 +56,10 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
   const { update: updateGroupEntry } = useCollectionWriters('groupExpenses')
   const batchOps = useBatchOps()
   const { toast } = useToast()
+
+  // The trip currently running, so a new expense can tag itself to it.
+  const trips = useCollection('trips')
+  const onTrip = activeTrip(trips.data)
 
   // For new entries, preselect the last-used payment method so step 3 is a confirm-tap.
   const lastPayment = initial?.id ? null : loadLastPayment()
@@ -570,6 +575,15 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
         toPlace: isJourney ? normalizePlace(toPlace) : '',
         note,
         date: parseDateInput(dateStr),
+        // On a trip, almost everything you spend IS trip spending. Asking every
+        // time would be noise, and relying on you to remember would make the
+        // total wrong in the direction that matters — a forgotten tag silently
+        // under-reports what the journey cost. So a running trip claims it, and
+        // it can be untagged on the Trips page if it does not belong.
+        //
+        // Editing keeps whatever the record already says: a correction to an
+        // old expense must not sweep it into today's holiday.
+        ...(initial?.id ? {} : onTrip ? { tripId: onTrip.id } : {}),
       }
       if (initial?.id) {
         await update(initial.id, payload)

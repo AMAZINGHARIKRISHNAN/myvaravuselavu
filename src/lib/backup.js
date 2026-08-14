@@ -6,7 +6,7 @@ import { fetchCollectionOnce, fetchSettingsOnce, restoreRecords, saveSettings } 
 
 export const BACKUP_APP = 'myvaravuselavu'
 export const BACKUP_VERSION = 1
-const COLLECTIONS = ['expenses', 'income', 'transfers', 'friendPurchases', 'recurring', 'groups', 'groupExpenses', 'commuteTrips', 'commuteClaims', 'pasmoRecharges', 'cashCounts', 'onlineOrders', 'storePoints', 'officeReimbursements', 'commutePasses', 'windfalls', 'losses', 'withdrawals', 'accountEntries', 'monthAudits', 'reconciles', 'notes']
+const COLLECTIONS = ['expenses', 'income', 'transfers', 'friendPurchases', 'recurring', 'groups', 'groupExpenses', 'commuteTrips', 'commuteClaims', 'pasmoRecharges', 'cashCounts', 'onlineOrders', 'storePoints', 'officeReimbursements', 'commutePasses', 'windfalls', 'losses', 'withdrawals', 'accountEntries', 'monthAudits', 'reconciles', 'notes', 'trips']
 
 // Firestore Timestamps don't survive JSON — tag them so restore can turn
 // them back into real dates instead of dead {seconds, nanoseconds} husks.

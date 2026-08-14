@@ -27,6 +27,7 @@ const Reimbursements = lazyWithRetry(() => import('./pages/Reimbursements'))
 const Profit = lazyWithRetry(() => import('./pages/Profit'))
 const Shopping = lazyWithRetry(() => import('./pages/Shopping'))
 const Notes = lazyWithRetry(() => import('./pages/Notes'))
+const Trips = lazyWithRetry(() => import('./pages/Trips'))
 const Review = lazyWithRetry(() => import('./pages/Review'))
 const Audit = lazyWithRetry(() => import('./pages/Audit'))
 const Reconcile = lazyWithRetry(() => import('./pages/Reconcile'))
@@ -100,6 +101,7 @@ function App() {
                   <Route path="/profit" element={<Page name="Profit"><Profit /></Page>} />
                   <Route path="/shopping" element={<Page name="Shopping"><Shopping /></Page>} />
                   <Route path="/notes" element={<Page name="Notes"><Notes /></Page>} />
+                  <Route path="/trips" element={<Page name="Trips"><Trips /></Page>} />
                   <Route path="/review" element={<Page name="Review"><Review /></Page>} />
                   <Route path="/audit" element={<Page name="Audit"><Audit /></Page>} />
                   <Route path="/reconcile" element={<Page name="Reconcile"><Reconcile /></Page>} />
