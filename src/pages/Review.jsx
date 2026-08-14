@@ -79,11 +79,15 @@ export default function Review() {
   const savingsRate = totals.savingsRate ?? NaN
   const grade = gradeForSavingsRate(savingsRate)
 
-  const prevKept = monthTotals({
+  // The whole previous month, not just what was kept: the savings rate needs
+  // its income too, and deriving that separately is what left a call to a
+  // helper this file no longer has.
+  const prevTotals = monthTotals({
     income: prevIncome.data,
     expenses: prevExpenses.data,
     transfers: prevTransfers.data,
-  }).saved
+  })
+  const prevKept = prevTotals.saved
 
   // Yen only, like every other category breakdown in the app.
   const spendByCategory = useMemo(() => sumByCategory(expenses.data), [expenses.data])
@@ -119,12 +123,10 @@ export default function Review() {
         expenses: expenses.data,
         prevExpenses: prevExpenses.data,
         savingsRate,
-        prevSavingsRate: sum(prevIncome.data)
-          ? prevKept / sum(prevIncome.data)
-          : NaN,
+        prevSavingsRate: prevTotals.savingsRate ?? NaN,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [expenses.data, prevExpenses.data, savingsRate, prevKept]
+    [expenses.data, prevExpenses.data, savingsRate, prevTotals.savingsRate]
   )
 
   // Budgets: which caps held and which broke, this month.

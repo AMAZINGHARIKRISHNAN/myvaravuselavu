@@ -1,11 +1,25 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["react", "oxc"],
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
+  "globals": {
+    "__APP_VERSION__": "readonly",
+    "__APP_COMMIT__": "readonly",
+    "__APP_BUILT_AT__": "readonly"
+  },
   "rules": {
+    "no-undef": "error",
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
   },
   "overrides": [
+    {
+      "files": ["**/*.test.js", "**/*.test.jsx"],
+      "env": { "node": true }
+    },
     {
       "files": ["src/context/**"],
       "rules": {
