@@ -53,7 +53,7 @@ const FLAG_PREFIX = 'vs_ai_'
 export const AI_FEATURES = [
   { key: 'assistant', label: 'Assistant answers', hint: 'Free-form questions about your own figures', ready: false },
   { key: 'receipts', label: 'Receipt scanning', hint: 'Read a photographed receipt into the entry form', ready: false },
-  { key: 'entry', label: 'Conversational entry', hint: 'Draft an entry from a spoken sentence', ready: false },
+  { key: 'entry', label: 'Conversational entry', hint: 'Describe what happened and it fills the forms — it asks about anything it is unsure of, and nothing saves until you confirm', ready: true },
   { key: 'insights', label: 'Weekly insights', hint: 'A short written summary on the Review page', ready: false },
   // Its own flag, and worded so the trade is visible before it is switched on:
   // a payslip is not a receipt, and the whole image is sent.

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
-import { ChevronLeft, ChevronRight, Wallet, Receipt, Send, TrendingUp, LineChart, TrendingDown, LifeBuoy } from 'lucide-react'
+import { ChevronLeft, ChevronRight, LifeBuoy, LineChart, Receipt, Send, Sparkles, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
 import { useSettings } from '../hooks/useSettings'
 import { useAnimatedNumber } from '../hooks/useAnimatedNumber'
@@ -23,6 +23,7 @@ import RateBanner from '../components/dashboard/RateBanner'
 import GlanceStrip from '../components/dashboard/GlanceStrip'
 import AccountsCard from '../components/dashboard/AccountsCard'
 import BuildStamp from '../components/dashboard/BuildStamp'
+import StorySheet from '../components/entry/StorySheet'
 import QuickAdd from '../components/entry/QuickAdd'
 import EntryFlow from '../components/entry/EntryFlow'
 import MoveMoneySheet from '../components/entry/MoveMoneySheet'
@@ -109,6 +110,7 @@ export default function Dashboard() {
   // already knew (the amount typed on the keypad, the date chosen).
   const [showMove, setShowMove] = useState(null)
   const [showJarvis, setShowJarvis] = useState(false)
+  const [showStory, setShowStory] = useState(false)
   // An expense the assistant heard, handed to the entry sheet prefilled.
   const [jarvisDraft, setJarvisDraft] = useState(null)
 
@@ -705,6 +707,12 @@ export default function Dashboard() {
               onClick: () => setShowJarvis(true),
             },
             {
+              label: 'Tell it what happened',
+              icon: <Sparkles size={20} aria-hidden="true" />,
+              tint: 'bg-white text-indigo-600 dark:bg-neutral-800 dark:text-indigo-400',
+              onClick: () => setShowStory(true),
+            },
+            {
               label: 'Add an expense',
               icon: <Receipt size={20} aria-hidden="true" />,
               tint: 'bg-white text-indigo-600 dark:bg-neutral-800 dark:text-indigo-400',
@@ -715,6 +723,7 @@ export default function Dashboard() {
       )}
 
       {showMove && <MoveMoneySheet initial={showMove} onClose={() => setShowMove(null)} />}
+      {showStory && <StorySheet onClose={() => setShowStory(false)} />}
 
       {showManual && (
         <EntryFlow
