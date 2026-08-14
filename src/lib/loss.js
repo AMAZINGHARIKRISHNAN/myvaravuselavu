@@ -18,6 +18,10 @@ export const LOSS_KINDS = [
   { key: 'fee', label: 'Fee charged', emoji: '🏦', hint: 'bank, ATM, transfer, card or service fee' },
   { key: 'penalty', label: 'Fine / penalty', emoji: '⚖️', hint: 'traffic fine, late fee, tax penalty' },
   { key: 'cancellation', label: 'Cancelled / forfeited', emoji: '🚫', hint: 'a booking you paid for and could not use' },
+  // Money you did not earn is money you are out, and it is the one cost of a
+  // trip that never appears as an expense: nothing leaves an account, so
+  // nothing is logged, and the journey looks cheaper than it was.
+  { key: 'unpaidLeave', label: 'Unpaid leave', emoji: '📅', hint: 'a day off work you were not paid for — the pay you gave up' },
   { key: 'lost', label: 'Lost or stolen', emoji: '💸', hint: 'cash, a card balance, anything gone' },
   { key: 'damage', label: 'Damage / repair', emoji: '🔧', hint: 'something broke and you paid for it' },
   { key: 'other', label: 'Other', emoji: '📉', hint: '' },

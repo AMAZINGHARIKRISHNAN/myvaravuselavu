@@ -31,6 +31,7 @@ export default function Profit() {
   const trips = useCollection('commuteTrips')
   const windfalls = useCollection('windfalls')
   const losses = useCollection('losses')
+  const journeys = useCollection('trips')
   const { settings } = useSettings()
   const batchOps = useBatchOps()
   const { toast } = useToast()
@@ -518,6 +519,7 @@ export default function Profit() {
         <LossSheet
           initial={editingLoss}
           accounts={accounts}
+          trips={journeys.data}
           onSave={saveLoss}
           onClose={() => {
             setAddingLoss(false)
@@ -765,7 +767,7 @@ function WindfallSheet({ initial, accounts, onSave, onClose }) {
 
 // The mirror image of WindfallSheet. Two numbers again, because a loss you
 // partly got back isn't the loss you first felt.
-function LossSheet({ initial, accounts, onSave, onClose }) {
+function LossSheet({ initial, accounts, trips = [], onSave, onClose }) {
   const [label, setLabel] = useState(initial?.label ?? '')
   const [kind, setKind] = useState(initial?.kind ?? 'unreimbursed')
   const [paid, setPaid] = useState(initial?.paid ?? '')
@@ -774,6 +776,7 @@ function LossSheet({ initial, accounts, onSave, onClose }) {
   const [account, setAccount] = useState(initial?.account ?? '')
   const [disputed, setDisputed] = useState(initial?.status === 'disputed')
   const [note, setNote] = useState(initial?.note ?? '')
+  const [tripId, setTripId] = useState(initial?.tripId ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -799,6 +802,10 @@ function LossSheet({ initial, accounts, onSave, onClose }) {
           date: parseDateInput(date),
           account: account || null,
           status: disputed ? 'disputed' : 'written-off',
+          // A loss can belong to a journey. An unpaid day taken to fly home is
+          // a cost of that trip, and without this the trip counts only what
+          // left an account and reads cheaper than it was.
+          tripId: tripId || null,
           note: note.trim(),
         },
         initial?.id
@@ -920,6 +927,20 @@ function LossSheet({ initial, accounts, onSave, onClose }) {
         />
         Disputed — might still come back
       </label>
+
+      {trips.length > 0 && (
+        <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+          Part of a trip? (optional)
+          <select value={tripId} onChange={(e) => setTripId(e.target.value)} className="input">
+            <option value="">— not a trip —</option>
+            {trips.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
         Note (optional)

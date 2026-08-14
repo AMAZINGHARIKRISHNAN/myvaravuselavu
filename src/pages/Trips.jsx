@@ -16,14 +16,18 @@ import { countryOf } from '../lib/money'
 import {
   isActive,
   perDay,
+  searchUntagged,
   summarise,
   tagOps,
   tripExpenses,
   tripLength,
+  tripLosses,
   tripTotals,
+  trueCost,
   untagOps,
   untaggedInRange,
 } from '../lib/trips'
+import { lossAmount, lossKind } from '../lib/loss'
 import BottomSheet from '../components/ui/BottomSheet'
 import EmptyState from '../components/ui/EmptyState'
 import Skeleton from '../components/ui/Skeleton'
@@ -36,6 +40,9 @@ import Skeleton from '../components/ui/Skeleton'
 export default function Trips() {
   const trips = useCollection('trips')
   const expenses = useCollection('expenses')
+  // Attached losses: an unpaid day off is a cost of the trip that never
+  // appears as an expense, because nothing leaves an account.
+  const losses = useCollection('losses')
   const [editing, setEditing] = useState(null)
   const [openTrip, setOpenTrip] = useState(null)
 
@@ -126,6 +133,7 @@ export default function Trips() {
         <TripSheet
           trip={trips.data.find((t) => t.id === openTrip)}
           expenses={expenses.data}
+          losses={losses.data}
           onEdit={(t) => {
             setOpenTrip(null)
             setEditing(t)
@@ -231,7 +239,7 @@ function TripForm({ initial, onClose }) {
   )
 }
 
-function TripSheet({ trip, expenses, onEdit, onClose }) {
+function TripSheet({ trip, expenses, losses = [], onEdit, onClose }) {
   const batchOps = useBatchOps()
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
@@ -242,6 +250,12 @@ function TripSheet({ trip, expenses, onEdit, onClose }) {
   // Anything dated inside the trip that hasn't been tagged — offered, never
   // applied, so the rent landing mid-holiday can be left out of it.
   const candidates = useMemo(() => untaggedInRange(expenses, trip), [expenses, trip])
+  // A flight is booked months ahead, so the date offer can never find it — and
+  // it is usually the biggest line of the whole journey.
+  const [query, setQuery] = useState('')
+  const found = useMemo(() => searchUntagged(expenses, query), [expenses, query])
+  const attached = useMemo(() => tripLosses(losses, trip?.id), [losses, trip?.id])
+  const cost = useMemo(() => trueCost(expenses, losses, trip?.id), [expenses, losses, trip?.id])
 
   if (!trip) return null
   const days = tripLength(trip)
@@ -270,6 +284,31 @@ function TripSheet({ trip, expenses, onEdit, onClose }) {
           {totals.totals.IN > 0 && ` · ${formatINR(rate.IN)}/day`}
         </p>
       </div>
+
+      {/* Pay given up is a cost of the trip that never leaves an account, so it
+          never appears as an expense. Shown apart from spending, because "I
+          spent ¥131,080 on flights" and "the trip cost me ¥145,580" are
+          different sentences and both are true. */}
+      {(cost.forgone.JP > 0 || cost.forgone.IN > 0) && (
+        <div className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+          <p className="font-semibold">
+            Plus {cost.forgone.JP > 0 && formatJPY(cost.forgone.JP)}
+            {cost.forgone.JP > 0 && cost.forgone.IN > 0 && ' + '}
+            {cost.forgone.IN > 0 && formatINR(cost.forgone.IN)} you did not earn
+          </p>
+          {attached.map((l) => (
+            <p key={l.id} className="mt-0.5 text-[11px]">
+              {lossKind(l.kind).emoji} {l.label || lossKind(l.kind).label} ·{' '}
+              {formatByCountry(lossAmount(l), countryOf(l))}
+            </p>
+          ))}
+          <p className="mt-1 border-t border-amber-500/20 pt-1 font-semibold tabular-nums">
+            True cost: {cost.total.JP > 0 && formatJPY(cost.total.JP)}
+            {cost.total.JP > 0 && cost.total.IN > 0 && ' + '}
+            {cost.total.IN > 0 && formatINR(cost.total.IN)}
+          </p>
+        </div>
+      )}
 
       {/* Where it went, each currency on its own. */}
       {['JP', 'IN'].map((country) => {
@@ -316,6 +355,42 @@ function TripSheet({ trip, expenses, onEdit, onClose }) {
           </button>
         </div>
       )}
+
+      {/* Anything at all, whatever its date — this is how a flight booked in
+          July joins a trip in September. */}
+      <div className="space-y-1.5">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Add something booked earlier — search “Cathay”, “flight”, an amount…"
+          className="input"
+        />
+        {found.map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            disabled={busy}
+            onClick={() => run(tagOps([e], trip.id), `🧳 Added to ${trip.name}`)}
+            className="flex w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-white/5"
+          >
+            <span className="min-w-0 flex-1 truncate text-gray-700 dark:text-gray-200">
+              {CATEGORY_ICONS[e.category] || '📌'} {e.note?.trim() || e.store || e.category}
+              <span className="text-gray-400">
+                {' '}
+                · {e.date && new Date(e.date.toDate ? e.date.toDate() : e.date).toLocaleDateString()}
+              </span>
+            </span>
+            <span className="shrink-0 tabular-nums text-gray-900 dark:text-gray-100">
+              {formatByCountry(e.amount, countryOf(e))}
+            </span>
+          </button>
+        ))}
+        {query.trim().length >= 2 && found.length === 0 && (
+          <p className="px-2 text-[11px] text-gray-500">
+            Nothing untagged matches. It may already be on another trip.
+          </p>
+        )}
+      </div>
 
       {tagged.length > 0 && (
         <div className="max-h-[40svh] space-y-0.5 overflow-y-auto">

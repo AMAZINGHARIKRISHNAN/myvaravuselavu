@@ -4,11 +4,14 @@ import {
   isActive,
   onTrip,
   perDay,
+  searchUntagged,
   summarise,
   tagOps,
   tripExpenses,
   tripLength,
+  tripLosses,
   tripTotals,
+  trueCost,
   untagOps,
   untaggedInRange,
 } from './trips'
@@ -221,5 +224,92 @@ describe('the list screen', () => {
   it('survives having no trips at all', () => {
     expect(summarise()).toEqual([])
     expect(summarise([], [])).toEqual([])
+  })
+})
+
+// The scenario this was built against: a graduation in India, 11 Sep to 4 Oct.
+// A ¥131,080 Cathay Pacific ticket booked in July (including ¥4,700 of extra
+// baggage), rupee spending once there, and one unpaid day of leave.
+describe('a real trip, end to end', () => {
+  const india = { id: 'g1', name: 'India — Graduation', startDate: day(11), endDate: new Date(2026, 9, 4, 12) }
+
+  const flight = {
+    id: 'f1',
+    amount: 131080,
+    category: 'Transport',
+    note: 'Cathay Pacific — graduation',
+    date: new Date(2026, 6, 2, 12), // booked in July, months before the trip
+  }
+  const inIndia = [
+    spend('taxi', 900, { country: 'IN', category: 'Transport', date: new Date(2026, 8, 13, 12) }),
+    spend('gifts', 6500, { country: 'IN', category: 'Gifts', date: new Date(2026, 8, 20, 12) }),
+  ]
+  // One unpaid day. Nothing leaves an account, so it is not an expense.
+  const unpaidDay = { id: 'l1', kind: 'unpaidLeave', label: 'Unpaid leave', paid: 14500, recovered: 0 }
+
+  it('cannot find the flight by date, because it was booked months earlier', () => {
+    expect(untaggedInRange([flight, ...inIndia], india).map((e) => e.id)).toEqual(['taxi', 'gifts'])
+  })
+
+  it('finds it by searching instead', () => {
+    expect(searchUntagged([flight, ...inIndia], 'cathay').map((e) => e.id)).toEqual(['f1'])
+    expect(searchUntagged([flight], 'graduation')).toHaveLength(1)
+    expect(searchUntagged([flight], '131080')).toHaveLength(1)
+  })
+
+  it('never offers something already on another trip', () => {
+    expect(searchUntagged([{ ...flight, tripId: 'other' }], 'cathay')).toEqual([])
+  })
+
+  it('needs more than one character, so it does not dump the whole ledger', () => {
+    expect(searchUntagged([flight], 'c')).toEqual([])
+    expect(searchUntagged([flight], '')).toEqual([])
+  })
+
+  it('separates the yen ticket from the rupees spent there', () => {
+    const tagged = [{ ...flight, tripId: 'g1' }, ...inIndia.map((e) => ({ ...e, tripId: 'g1' }))]
+    const t = tripTotals(tagged, 'g1')
+    expect(t.totals).toEqual({ JP: 131080, IN: 7400 })
+  })
+
+  // The point: a trip counted only in spending looks cheaper than it was, by a
+  // day's pay.
+  it('adds the pay given up to what was spent', () => {
+    const tagged = [{ ...flight, tripId: 'g1' }, ...inIndia.map((e) => ({ ...e, tripId: 'g1' }))]
+    const cost = trueCost(tagged, [{ ...unpaidDay, tripId: 'g1' }], 'g1')
+    expect(cost.spent).toEqual({ JP: 131080, IN: 7400 })
+    expect(cost.forgone).toEqual({ JP: 14500, IN: 0 })
+    expect(cost.total).toEqual({ JP: 145580, IN: 7400 })
+  })
+
+  it('keeps spent and forgone apart, because they are different sentences', () => {
+    const cost = trueCost([], [{ ...unpaidDay, tripId: 'g1' }], 'g1')
+    expect(cost.spent.JP).toBe(0)
+    expect(cost.total.JP).toBe(14500)
+  })
+
+  it('ignores a loss belonging to another trip, or to none', () => {
+    const losses = [{ ...unpaidDay, tripId: 'other' }, { ...unpaidDay, id: 'l2' }]
+    expect(trueCost([], losses, 'g1').forgone).toEqual({ JP: 0, IN: 0 })
+  })
+
+  // Recovering more than you lost is a gain, and gains belong on the other
+  // side of the Profit page — never a negative cost here.
+  it('never turns a recovered loss into a negative cost', () => {
+    const refunded = { id: 'l3', tripId: 'g1', paid: 5000, recovered: 9000 }
+    expect(trueCost([], [refunded], 'g1').forgone.JP).toBe(0)
+  })
+
+  it('counts only what was not recovered', () => {
+    const partly = { id: 'l4', tripId: 'g1', paid: 5000, recovered: 2000 }
+    expect(trueCost([], [partly], 'g1').forgone.JP).toBe(3000)
+  })
+
+  it('costs nothing when nothing is attached', () => {
+    expect(trueCost([], [], 'g1')).toEqual({
+      spent: { JP: 0, IN: 0 },
+      forgone: { JP: 0, IN: 0 },
+      total: { JP: 0, IN: 0 },
+    })
   })
 })

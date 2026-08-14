@@ -141,3 +141,54 @@ export function summarise(trips = [], expenses = []) {
     })
     .sort((a, b) => (time(b.startDate) ?? 0) - (time(a.startDate) ?? 0))
 }
+
+// ---- What it really cost ----------------------------------------------------
+
+// Losses attached to a trip.
+//
+// The one cost of a journey that never shows up as an expense: an unpaid day
+// off is money you did not earn, so nothing leaves an account and nothing gets
+// logged. A trip counted only in spending looks cheaper than it was — by a
+// day's pay, which on a long trip home is not a rounding error.
+export function tripLosses(losses = [], tripId) {
+  return losses.filter((l) => onTrip(l, tripId))
+}
+
+// Money spent, money not earned, and the two added — per currency.
+//
+// Kept apart on purpose. "I spent ¥131,080 on flights" and "the trip cost me
+// ¥160,000" are different sentences and both are true; collapsing them would
+// lose the one you need when looking at a bank statement.
+export function trueCost(expenses = [], losses = [], tripId) {
+  const spent = tripTotals(expenses, tripId).totals
+  const forgone = { JP: 0, IN: 0 }
+
+  for (const l of tripLosses(losses, tripId)) {
+    const c = countryOf(l) === 'IN' ? 'IN' : 'JP'
+    // paid − recovered, never negative: getting more back than you lost is a
+    // gain and belongs on the other side of the Profit page.
+    forgone[c] += Math.max(0, (l.paid || 0) - (l.recovered || 0))
+  }
+
+  return {
+    spent,
+    forgone,
+    total: { JP: spent.JP + forgone.JP, IN: spent.IN + forgone.IN },
+  }
+}
+
+// Attaching something to a trip from outside its dates.
+//
+// A flight is booked months before you fly, so the "expenses inside these
+// dates" offer can never find it — and it is usually the single biggest line
+// of the whole journey. Anything untagged can be searched for and attached.
+export function searchUntagged(expenses = [], query = '', limit = 20) {
+  const q = query.trim().toLowerCase()
+  if (q.length < 2) return []
+  const hit = (v) => typeof v === 'string' && v.toLowerCase().includes(q)
+  return expenses
+    .filter((e) => !e.tripId)
+    .filter((e) => hit(e.note) || hit(e.store) || hit(e.category) || String(e.amount ?? '').includes(q))
+    .sort((a, b) => (toDate(b.date)?.getTime() || 0) - (toDate(a.date)?.getTime() || 0))
+    .slice(0, limit)
+}
