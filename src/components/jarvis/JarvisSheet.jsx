@@ -212,9 +212,18 @@ export default function JarvisSheet({ onClose, onLog }) {
       const parsed = validateDraft(reply, vocab)
       if (parsed.records.length === 0) throw new Error('nothing in it')
       setDraft(parsed)
-    } catch {
+    } catch (err) {
+      // Say WHAT went wrong. "I could not read that one" is indistinguishable
+      // from a busy model, an expired key, a blocked referrer and a bug, and
+      // the first three are things only this message can tell you apart.
+      const why = String(err?.message || '').replace(/^ai:\s*/, '')
       const failed = story
-        ? { intent: 'unknown', speech: 'I could not read that one — try the normal form.', lines: [], to: null }
+        ? {
+            intent: 'unknown',
+            speech: `I could not read that one${why ? ` — ${why}` : ''}.`,
+            lines: [],
+            to: null,
+          }
         : answer
       const spoken = personaSpeech(skin, failed)
       setEntries((prev) => [...prev, { q, answer: { ...failed, speech: spoken } }])

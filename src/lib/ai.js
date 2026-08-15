@@ -110,6 +110,13 @@ export function setAiEnabled(feature, on) {
 // Three limits, because they catch different mistakes: a debounce catches a
 // double-tap, the per-minute window catches a loop, the daily cap catches a
 // runaway left open in a tab.
+// The model is shared and free, so "busy" is a normal answer rather than a
+// failure. Retried rather than surfaced, because the user cannot do anything
+// with "try again" that the app cannot do for them.
+const RETRIES = 2
+const RETRY_BACKOFF_MS = 1200
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
 const RPM_LIMIT = 15
 const RPD_LIMIT = 1500
 const MIN_GAP_MS = 900
@@ -288,9 +295,20 @@ export async function ask(prompt, { json = false, image = null, model = MODEL_FL
   // successes does not guard against the failure loop that actually burns quota.
   recordCall()
 
-  let response
-  try {
-    response = await fetch(`${ENDPOINT}/${model}:generateContent`, {
+  const body = {
+    contents: [{ parts }],
+    generationConfig: {
+      // Ask for JSON at the protocol level rather than hoping the prompt is
+      // obeyed. stripJsonFences still runs, because a model can ignore this.
+      ...(json ? { responseMimeType: 'application/json' } : {}),
+      // The same sentence should produce the same records twice. Creativity is
+      // not a virtue when reading someone's spending.
+      temperature: 0,
+    },
+  }
+
+  const request = () =>
+    fetch(`${ENDPOINT}/${model}:generateContent`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -298,12 +316,26 @@ export async function ask(prompt, { json = false, image = null, model = MODEL_FL
         // out of anything that logs them.
         'x-goog-api-key': key,
       },
-      body: JSON.stringify({ contents: [{ parts }] }),
+      body: JSON.stringify(body),
     })
-  } catch {
-    // DNS failure, CORS, dropped connection — indistinguishable here, and the
-    // caller's response to all of them is the same: go local.
-    throw new Error('ai: network request failed')
+
+  // A free-tier model is busy sometimes. 503 and 429 mean "not now", not "no",
+  // and without a retry the whole feature fails on a shrug — which is exactly
+  // what happened the first time it was used for real. Two retries, backing
+  // off, then give up honestly.
+  let response
+  for (let attempt = 0; ; attempt++) {
+    try {
+      response = await request()
+    } catch {
+      // DNS failure, CORS, dropped connection — indistinguishable here, and the
+      // caller's response to all of them is the same: go local.
+      throw new Error('ai: network request failed')
+    }
+    if (response.ok) break
+    const busy = response.status === 503 || response.status === 429
+    if (!busy || attempt >= RETRIES) break
+    await sleep(RETRY_BACKOFF_MS * (attempt + 1))
   }
 
   if (!response.ok) {

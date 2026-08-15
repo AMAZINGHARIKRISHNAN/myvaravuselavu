@@ -264,7 +264,12 @@ describe('ask', () => {
     )
     expect(calls[0].init.method).toBe('POST')
     expect(calls[0].init.headers['x-goog-api-key']).toBe('test-key-not-a-real-one')
-    expect(calls[0].body).toEqual({ contents: [{ parts: [{ text: 'status?' }] }] })
+    expect(calls[0].body.contents).toEqual([{ parts: [{ text: 'status?' }] }])
+    // Deterministic by default: the same sentence must produce the same
+    // records twice, and creativity is not a virtue when reading spending.
+    expect(calls[0].body.generationConfig.temperature).toBe(0)
+    // JSON mode is asked for only when JSON is wanted.
+    expect(calls[0].body.generationConfig.responseMimeType).toBeUndefined()
   })
 
   // The key belongs in a header, not a query string, so it stays out of logs.
@@ -383,5 +388,67 @@ describe('ask', () => {
     stubFetch(null, { status: 500, body: {} })
     await expect(ask('x', { feature: BUILT })).rejects.toThrow()
     await expect(ask('y', { feature: BUILT })).rejects.toThrow(/debounce/)
+  })
+})
+
+// The feature failed on its first real use with "I could not read that one".
+// The model had simply been busy — a 503 — and there was no retry, so a
+// transient shrug became a dead end.
+describe('a busy model is not a failure', () => {
+  const okBody = {
+    candidates: [{ content: { parts: [{ text: 'fine' }] } }],
+  }
+
+  it('retries a 503 and succeeds', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      if (calls < 3) return { ok: false, status: 503, json: async () => ({ error: { message: 'busy' } }) }
+      return { ok: true, json: async () => okBody }
+    })
+    await expect(ask('x', { feature: BUILT })).resolves.toBe('fine')
+    expect(calls).toBe(3)
+  })
+
+  it('retries a 429 as well', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      if (calls < 2) return { ok: false, status: 429, json: async () => ({ error: { message: 'slow down' } }) }
+      return { ok: true, json: async () => okBody }
+    })
+    await expect(ask('x', { feature: BUILT })).resolves.toBe('fine')
+  })
+
+  it('gives up honestly rather than retrying forever', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      return { ok: false, status: 503, json: async () => ({ error: { message: 'still busy' } }) }
+    })
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/still busy/)
+    expect(calls).toBe(3) // the first, then two retries
+  })
+
+  // A bad key is not going to fix itself, and retrying it wastes quota.
+  it('does not retry a refusal', async () => {
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      return { ok: false, status: 403, json: async () => ({ error: { message: 'API key not valid' } }) }
+    })
+    await expect(ask('x', { feature: BUILT })).rejects.toThrow(/API key not valid/)
+    expect(calls).toBe(1)
+  })
+
+  it('asks for JSON at the protocol level when JSON is wanted', async () => {
+    let sent
+    vi.stubGlobal('fetch', async (_url, init) => {
+      sent = JSON.parse(init.body)
+      return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }] }) }
+    })
+    await ask('x', { feature: BUILT, json: true })
+    expect(sent.generationConfig.responseMimeType).toBe('application/json')
+    expect(sent.generationConfig.temperature).toBe(0)
   })
 })
