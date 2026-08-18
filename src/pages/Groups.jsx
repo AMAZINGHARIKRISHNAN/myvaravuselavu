@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, memo, useCallback } from 'react'
 import Portal from '../components/ui/Portal'
 import { ArrowLeft, Camera, HandCoins, Pencil, Plus, ShoppingCart, Trash2, X } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
@@ -347,6 +347,22 @@ function GroupDetail({ group, entries, onBack, onEdit, addEntry, updateEntry, re
   const [editingEntry, setEditingEntry] = useState(null)
   const [settling, setSettling] = useState(null) // suggested transfer being recorded
   const [viewingImage, setViewingImage] = useState(null) // bill photo shown full-screen
+
+  // Stable across renders, so the memoised row below actually skips work: a
+  // fresh arrow per entry per render makes memo() a no-op that costs a
+  // comparison. Each takes the entry rather than closing over it.
+  //
+  // Settlements are just "cash changed hands" — to fix one, delete it and
+  // record again. Editing it as an expense would silently turn the payment
+  // into new spending, so the guard lives here rather than in a null prop.
+  const editEntry = useCallback((entry) => {
+    if (entry?.type === 'settlement') return
+    setEditingEntry(entry)
+    setShowExpenseForm(true)
+  }, [])
+  const viewImage = useCallback((entry) => {
+    if (entry?.billImage) setViewingImage(entry.billImage)
+  }, [])
   const [calcPerson, setCalcPerson] = useState(null) // whose calculation log is open
 
   const members = group.members || NO_MEMBERS
@@ -561,29 +577,15 @@ function GroupDetail({ group, entries, onBack, onEdit, addEntry, updateEntry, re
         {sorted.map((e) => (
           <SwipeableRow
             key={e.id}
-            onEdit={() => {
-              // Settlements are just "cash changed hands" — to fix one,
-              // delete it and record again. Editing it as an expense would
-              // silently turn the payment into new spending.
-              if (e.type === 'settlement') return
-              setEditingEntry(e)
-              setShowExpenseForm(true)
-            }}
+            onEdit={() => editEntry(e)}
             onDelete={() => requestDelete(e.id)}
           >
             <EntryRow
               entry={e}
               country={group.country}
-              onViewImage={e.billImage ? () => setViewingImage(e.billImage) : null}
-              onEdit={
-                e.type === 'settlement'
-                  ? null
-                  : () => {
-                      setEditingEntry(e)
-                      setShowExpenseForm(true)
-                    }
-              }
-              onDelete={() => requestDelete(e.id)}
+              onViewImage={viewImage}
+              onEdit={editEntry}
+              onDelete={requestDelete}
             />
           </SwipeableRow>
         ))}
@@ -627,7 +629,10 @@ function GroupDetail({ group, entries, onBack, onEdit, addEntry, updateEntry, re
   )
 }
 
-function EntryRow({ entry: e, country, onViewImage, onEdit, onDelete }) {
+// Memoised: a group can hold a lot of entries, and a keystroke elsewhere on
+// the page should not redraw all of them. Only possible because the handlers
+// above are stable and each takes the entry rather than closing over it.
+const EntryRow = memo(function EntryRow({ entry: e, country, onViewImage, onEdit, onDelete }) {
   const isSettlement = e.type === 'settlement'
   // Itemized bills expand in place: tap the 🧾 tag to see every product
   // with its qty and line total, tap again to fold it away.
@@ -692,20 +697,20 @@ function EntryRow({ entry: e, country, onViewImage, onEdit, onDelete }) {
         {formatByCountry(e.amount, country)}
       </span>
       <div className="flex shrink-0 gap-0.5">
-        {onViewImage && (
+        {e.billImage && (
           <button
             type="button"
-            onClick={onViewImage}
+            onClick={() => onViewImage(e)}
             aria-label="View bill photo"
             className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
           >
             <Camera size={15} />
           </button>
         )}
-        {onEdit && (
+        {!isSettlement && (
           <button
             type="button"
-            onClick={onEdit}
+            onClick={() => onEdit(e)}
             aria-label="Edit"
             className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-indigo-600 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-indigo-400"
           >
@@ -714,7 +719,7 @@ function EntryRow({ entry: e, country, onViewImage, onEdit, onDelete }) {
         )}
         <button
           type="button"
-          onClick={onDelete}
+          onClick={() => onDelete(e.id)}
           aria-label="Delete"
           className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 transition-all hover:text-red-500 active:scale-90 touch-manipulation dark:text-gray-500 dark:hover:text-red-400"
         >
@@ -722,8 +727,7 @@ function EntryRow({ entry: e, country, onViewImage, onEdit, onDelete }) {
         </button>
       </div>
     </div>
-  )
-}
+  )})
 
 // Log one shared purchase: what, how much, who fronted the money. The split
 // itself is automatic — always equal between all members. Optionally attach

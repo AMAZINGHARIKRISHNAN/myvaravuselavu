@@ -33,51 +33,79 @@ const countsToward = (record, since) => {
   return Boolean(d) && d >= since
 }
 
-export function accountBalance(account, data = {}, accounts = []) {
-  const {
-    expenses = [],
-    income = [],
-    transfers = [],
-    recharges = [],
-    officeItems = [],
-    passes = [],
-    withdrawals = [],
-    accountEntries = [],
-  } = data
+// Every way money reaches or leaves an account — ONE list, read by both
+// functions below.
+//
+// They used to keep two hand-written lists and they drifted: a transfer
+// arriving and a commuter pass were missing from the explanation, so an
+// account whose hidden history was exactly those was told nothing was hidden
+// while its number sat unexplained. Adding a movement now means adding a row
+// here, and both functions see it.
+//
+// The two DO read the same movement differently in three places, on purpose.
+// Those differences are spelled out as fields rather than left implicit in two
+// loops, because that is precisely what a de-duplication would otherwise erase:
+//
+//   · `sign` — the balance is signed; the hidden tally is a magnitude ("how
+//     much is not being counted"), so it ignores sign entirely
+//   · `hiddenAmount` — a transfer ARRIVING is valued knowing its source
+//     account when balancing, and without that lookup when explaining
+//   · `balance` / `hiddenDate` — a pass names its source through
+//     passDeduction (cost and deposit can come from different places), so it
+//     has no single field to match on
+const SOURCES = [
+  { key: 'expenses', field: 'paymentMethod', sign: -1, amount: (r) => r.amount },
+  { key: 'income', field: 'account', sign: 1, amount: (r) => r.amount },
+  // The fee is taken OUT of the amount sent, so `amountSent` is the whole
+  // debit — adding the fee on top would charge for it twice.
+  { key: 'transfers', field: 'fromAccount', sign: -1, amount: (r) => r.amountSent },
+  {
+    key: 'transfers',
+    field: 'toAccount',
+    sign: 1,
+    amount: (r, { account, accounts }) =>
+      transferCredit(r, account.country, accounts.find((a) => a.label === r.fromAccount)?.country ?? null),
+    hiddenAmount: (r, { account }) => transferCredit(r, account.country),
+  },
+  {
+    key: 'accountEntries',
+    field: 'account',
+    sign: (r) => (r.direction === 'debit' ? -1 : 1),
+    amount: (r) => r.amount,
+  },
+  { key: 'recharges', field: 'paidFrom', sign: -1, amount: (r) => r.amount },
+  { key: 'officeItems', field: 'paidWith', sign: -1, amount: (r) => r.amount },
+  { key: 'withdrawals', field: 'account', sign: -1, amount: (r) => r.amount },
+  {
+    key: 'passes',
+    // Kept as the aggregate call rather than re-implemented as a loop:
+    // passSpentFrom treats a pass with no date as time zero, where
+    // countsToward rejects a missing date outright. Rewriting it would move
+    // that edge, and this refactor is not allowed to move anything.
+    balance: (rows, { label, since }) => -passSpentFrom(rows, label, since.getTime()),
+    hiddenAmount: (p, { label }) => passDeduction(p, label),
+    hiddenDate: (p) => p.date ?? p.startDate,
+  },
+]
 
+export function accountBalance(account, data = {}, accounts = []) {
   const label = account.label
   const since = cutoffFor(account)
+  const ctx = { account, accounts, label, since }
   let balance = account.openingBalance ?? 0
 
-  for (const r of expenses) {
-    if (r.paymentMethod === label && countsToward(r, since)) balance -= r.amount || 0
-  }
-  for (const r of income) {
-    if (r.account === label && countsToward(r, since)) balance += r.amount || 0
-  }
-  for (const r of transfers) {
-    // The fee is taken OUT of the amount sent, so `amountSent` is the whole
-    // debit — adding the fee on top would charge for it twice.
-    if (r.fromAccount === label && countsToward(r, since)) balance -= r.amountSent || 0
-    if (r.toAccount === label && countsToward(r, since)) {
-      const source = accounts.find((a) => a.label === r.fromAccount)
-      balance += transferCredit(r, account.country, source?.country ?? null)
+  for (const source of SOURCES) {
+    const rows = data[source.key] || []
+    if (source.balance) {
+      balance += source.balance(rows, ctx)
+      continue
+    }
+    for (const r of rows) {
+      if (r[source.field] !== label || !countsToward(r, since)) continue
+      const sign = typeof source.sign === 'function' ? source.sign(r) : source.sign
+      balance += sign * (source.amount(r, ctx) || 0)
     }
   }
-  for (const r of accountEntries) {
-    if (r.account !== label || !countsToward(r, since)) continue
-    balance += r.direction === 'debit' ? -(r.amount || 0) : r.amount || 0
-  }
-  for (const r of recharges) {
-    if (r.paidFrom === label && countsToward(r, since)) balance -= r.amount || 0
-  }
-  for (const r of officeItems) {
-    if (r.paidWith === label && countsToward(r, since)) balance -= r.amount || 0
-  }
-  for (const w of withdrawals) {
-    if (w.account === label && countsToward(w, since)) balance -= w.amount || 0
-  }
-  balance -= passSpentFrom(passes, label, since.getTime())
 
   return balance
 }
@@ -93,34 +121,33 @@ export function ignoredBeforeCutoff(account, data = {}) {
   if (!account?.openingBalanceAt) return { count: 0, total: 0, since: null }
 
   const label = account.label
+  const ctx = { account, accounts: [], label, since }
   let count = 0
   let total = 0
-  const before = (record, amount) => {
-    const d = toDate(record?.date)
+  const before = (when, amount) => {
+    const d = toDate(when)
     if (!d || d >= since) return
     count += 1
     total += amount || 0
   }
 
-  for (const r of data.expenses || []) if (r.paymentMethod === label) before(r, r.amount)
-  for (const r of data.income || []) if (r.account === label) before(r, r.amount)
-  for (const r of data.transfers || []) if (r.fromAccount === label) before(r, r.amountSent)
-  // Both sides of a transfer, and passes. Left out originally, so an account
-  // whose ignored history was a remittance arriving or a commuter pass was told
-  // "0 records are dated before this balance" while its number sat unexplained.
-  // This has to list exactly what accountBalance skips, or the explanation is
-  // itself the thing that needs explaining.
-  for (const r of data.transfers || [])
-    if (r.toAccount === label) before(r, transferCredit(r, account.country))
-  for (const r of data.accountEntries || []) if (r.account === label) before(r, r.amount)
-  for (const r of data.recharges || []) if (r.paidFrom === label) before(r, r.amount)
-  for (const r of data.officeItems || []) if (r.paidWith === label) before(r, r.amount)
-  for (const w of data.withdrawals || []) if (w.account === label) before(w, w.amount)
-  for (const p of data.passes || []) {
-    // A pass not bought from this account deducts 0 — counting it would inflate
-    // the tally with records that were never this account's to begin with.
-    const out = passDeduction(p, label)
-    if (out > 0) before({ date: p.date ?? p.startDate }, out)
+  for (const source of SOURCES) {
+    const rows = data[source.key] || []
+    const amountOf = source.hiddenAmount || source.amount
+    for (const r of rows) {
+      // A pass is matched by what it actually deducts from this account, not
+      // by a field — and one that deducts nothing was never this account's to
+      // explain.
+      if (source.hiddenDate) {
+        const out = amountOf(r, ctx)
+        if (out > 0) before(source.hiddenDate(r), out)
+        continue
+      }
+      if (r[source.field] !== label) continue
+      // Unsigned on purpose: this answers "how much is not being counted",
+      // and a hidden debit hides money just as a hidden credit does.
+      before(r.date, amountOf(r, ctx))
+    }
   }
 
   return { count, total, since }

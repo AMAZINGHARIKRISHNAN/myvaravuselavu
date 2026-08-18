@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useTheme } from '../../context/ThemeContext'
 import { hudGreeting, hudName } from '../../lib/hud'
 import { roleLine } from '../../lib/persona'
+import { headlineFor } from '../../lib/narrate'
 
 const reducedMotion = () =>
   typeof window !== 'undefined' &&
@@ -14,9 +15,13 @@ const reducedMotion = () =>
 // the same router the mic button uses. That's deliberate: the greeting quotes a
 // real safe-to-spend figure, and it is the assistant's figure, not a second
 // calculation that could drift from it.
-export default function HudGreeting({ name, salaryInDays, ...ctx }) {
+export default function HudGreeting({ name, salaryInDays, signals = [], ...ctx }) {
   const { skin } = useTheme()
-  const { salute, status, to } = hudGreeting({ skin, name, ...ctx })
+  const { salute, status: fallbackStatus, to } = hudGreeting({ skin, name, ...ctx })
+  // A real signal beats a static line. headlineFor picks the most significant
+  // narratable one — a projected shortfall outranks a budget date — and falls
+  // back to the router's own answer when nothing has anything to say.
+  const status = headlineFor(signals, skin) ?? fallbackStatus
   const [typed, setTyped] = useState(() => (reducedMotion() ? status : ''))
 
   useEffect(() => {

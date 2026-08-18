@@ -1,4 +1,5 @@
 import { toDate } from './format'
+import { sourceCountry } from './currencyAudit'
 
 export function downloadCsv(filename, rows, columns) {
   const header = columns.map((c) => c.label).join(',')
@@ -101,4 +102,40 @@ export function parseCsv(text) {
   if (!header) return []
 
   return body.map((cols) => Object.fromEntries(header.map((h, i) => [h, cols[i] ?? ''])))
+}
+
+// One imported CSV row → an expense record.
+//
+// The payment method decides the currency. A CSV carries a free `Country`
+// column, and trusting it made import the last remaining way to create a record
+// whose currency disagrees with the account it names: a row of
+// `Country=IN, Payment Method=MUFJ` produced a rupee expense filed against a
+// yen account, which then subtracted ¥ from it at face value.
+//
+// Every other write path in the app already derives currency from the method
+// (see money.js and currencyAudit.js). Import now does the same, so a spreadsheet
+// cannot introduce what the entry forms refuse.
+//
+// The Country column is still read — but only as the FALLBACK, for the one case
+// where the method genuinely does not determine currency: cash, or a method the
+// app no longer recognises.
+export function expenseFromCsvRow(row, accounts = [], { normalizeStore = (s) => s || '' } = {}) {
+  const amount = parseFloat(row.Amount)
+  const date = parseCsvDate(row.Date)
+  if (!amount || !date) return null
+
+  const paymentMethod = row['Payment Method'] || 'Cash'
+  const fixed = sourceCountry(paymentMethod, accounts)
+
+  return {
+    amount,
+    category: row.Category || 'Other',
+    country: fixed || row.Country || 'JP',
+    paymentMethod,
+    store: normalizeStore(row.Store),
+    fromPlace: row.From || '',
+    toPlace: row.To || '',
+    note: row.Note || '',
+    date,
+  }
 }

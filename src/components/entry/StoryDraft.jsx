@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { useSettings } from '../../hooks/useSettings'
-import { useCollection } from '../../hooks/useCollection'
 import { useBatchOps } from '../../hooks/useBatchOps'
 import { useToast } from '../../context/ToastContext'
 import { formatByCountry } from '../../lib/format'
 import { CATEGORY_ICONS } from '../../lib/constants'
 import { applyAnswer, checkOps, toOps, validateDraft } from '../../lib/storyIntake'
+import AnswerChips from './AnswerChips'
 
 // A proposed set of records, its unanswered questions, and a Save button.
 //
@@ -54,7 +53,7 @@ export default function StoryDraft({ draft, setDraft, vocab, onDone }) {
       {draft.questions.map((q) => (
         <div key={`${q.recordIndex}-${q.field}`} className="rounded-xl bg-indigo-500/10 p-3">
           <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">{q.ask}</p>
-          <Answer field={q.field} vocab={vocab} onAnswer={(v) => answer(q.recordIndex, q.field, v)} />
+          <AnswerChips field={q.field} vocab={vocab} onAnswer={(v) => answer(q.recordIndex, q.field, v)} />
         </div>
       ))}
 
@@ -76,17 +75,6 @@ export default function StoryDraft({ draft, setDraft, vocab, onDone }) {
   )
 }
 
-// The vocabulary a draft needs, assembled where the collections live.
-export function useVocabulary() {
-  const { settings } = useSettings()
-  const trips = useCollection('trips')
-  const accounts = settings?.accounts || []
-  return {
-    accounts,
-    trips: trips.data,
-    accountList: accounts,
-  }
-}
 
 function DraftRow({ record }) {
   if (record.kind === 'trip') {
@@ -132,68 +120,6 @@ function DraftRow({ record }) {
         {record.category} · {record.paymentMethod || 'which account?'}
         {record.date && ` · ${record.date.toLocaleDateString()}`}
       </p>
-    </div>
-  )
-}
-
-// A tap where the answer is one of a known set, typing only where it genuinely
-// is not — a payment method typed by hand is how a wrong one gets in.
-function Answer({ field, vocab, onAnswer }) {
-  const [typed, setTyped] = useState('')
-
-  if (field === 'paymentMethod' || field === 'account') {
-    return (
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {vocab.paymentMethods.map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => onAnswer(m)}
-            className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200"
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-    )
-  }
-
-  if (field === 'country') {
-    return (
-      <div className="mt-2 flex gap-1.5">
-        {[
-          ['JP', '🇯🇵 Yen'],
-          ['IN', '🇮🇳 Rupees'],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => onAnswer(value)}
-            className="rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200"
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div className="mt-2 flex gap-1.5">
-      <input
-        value={typed}
-        onChange={(e) => setTyped(e.target.value)}
-        type={field === 'amount' ? 'number' : field === 'date' ? 'date' : 'text'}
-        inputMode={field === 'amount' ? 'decimal' : undefined}
-        className="input flex-1"
-      />
-      <button
-        type="button"
-        onClick={() => typed.trim() && onAnswer(typed.trim())}
-        className="rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white dark:bg-indigo-500"
-      >
-        OK
-      </button>
     </div>
   )
 }

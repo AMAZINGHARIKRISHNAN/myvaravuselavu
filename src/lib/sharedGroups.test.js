@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeGroupReport, settleSuggestions, balanceLog } from './sharedGroups'
+import { balanceLog, computeGroupReport, mirrorEditOps, settleSuggestions } from './sharedGroups'
 
 const MEMBERS = ['Hari', 'Roommate']
 
@@ -123,5 +123,52 @@ describe('balanceLog', () => {
     const log = balanceLog(['A', 'B', 'C'], entries, 'A')
     expect(log).toHaveLength(1) // B→C settlement is invisible to A
     expect(log[0].delta).toBe(600)
+  })
+})
+
+// The expense and its group mirror used to be updated in two separate awaits.
+// A failure between them left the personal record and the group's split maths
+// disagreeing about the same purchase.
+describe('editing an expense mirrored into a group', () => {
+  const payload = { amount: 3200, store: 'Aeon', date: new Date('2026-08-15T12:00:00Z'), country: 'JP', paymentMethod: 'MUFJ' }
+
+  it('puts both sides in one list, so one commit covers them', () => {
+    const ops = mirrorEditOps({ expenseId: 'e1', groupEntryId: 'g1', payload, item: 'Groceries' })
+    expect(ops).toHaveLength(2)
+    expect(ops.map((o) => o.name)).toEqual(['expenses', 'groupExpenses'])
+    expect(ops.every((o) => o.op === 'update')).toBe(true)
+  })
+
+  it('carries the new amount to the ledger, which is what the split reads', () => {
+    const [, mirror] = mirrorEditOps({ expenseId: 'e1', groupEntryId: 'g1', payload, item: 'Groceries' })
+    expect(mirror.data.amount).toBe(3200)
+    expect(mirror.data.item).toBe('Groceries')
+    expect(mirror.data.date).toBe(payload.date)
+  })
+
+  // The ledger splits a number between people; it has no use for how the payer
+  // happened to pay, and copying it would only invite the two to disagree.
+  it('does not push payment method or country into the ledger', () => {
+    const [, mirror] = mirrorEditOps({ expenseId: 'e1', groupEntryId: 'g1', payload, item: 'x' })
+    expect(mirror.data.paymentMethod).toBeUndefined()
+    expect(mirror.data.country).toBeUndefined()
+  })
+
+  it('is a single op when the expense has no group mirror', () => {
+    const ops = mirrorEditOps({ expenseId: 'e1', groupEntryId: null, payload, item: 'x' })
+    expect(ops).toEqual([{ op: 'update', name: 'expenses', id: 'e1', data: payload }])
+  })
+
+  it('does nothing without an expense to edit', () => {
+    expect(mirrorEditOps({ expenseId: null, groupEntryId: 'g1', payload, item: 'x' })).toEqual([])
+  })
+
+  // Composed guarantee: this returns ONE list, and commitOps commits a list
+  // all-or-nothing (firestore.test.js, "commits nothing when a data function
+  // throws" / "surfaces a failed commit"). So a mid-edit failure changes
+  // neither side — there is no longer a point between the two writes to fail at.
+  it('leaves no gap between the two writes to fail in', () => {
+    const ops = mirrorEditOps({ expenseId: 'e1', groupEntryId: 'g1', payload, item: 'x' })
+    expect(ops).toHaveLength(2) // one list, therefore one commit
   })
 })

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
 import { useSettings } from '../hooks/useSettings'
+import { useRecurring } from '../hooks/useRecurring'
+import { useAccountBalances } from '../hooks/useAccountBalances'
 import { useToast } from '../context/ToastContext'
 import { monthRange } from '../lib/dateRanges'
 import { formatJPY, formatPercent } from '../lib/format'
@@ -15,6 +17,9 @@ import ImageReportButton from '../components/dashboard/ImageReportButton'
 import Skeleton from '../components/ui/Skeleton'
 import { useToday } from '../hooks/useToday'
 import { monthTotals, sumByCategory } from '../lib/money'
+import { forecastSignals, spendableTotal } from '../lib/forecast'
+import SignalsPanel from '../components/dashboard/SignalsPanel'
+import NarratedSignals from '../components/dashboard/NarratedSignals'
 
 // The month-end moment. Everything the app already knows, assembled into one
 // screen you read once a month (on salary day) instead of piecing together
@@ -62,6 +67,10 @@ export default function Review() {
   const friendPurchases = useCollection('friendPurchases')
   const claims = useCollection('commuteClaims')
   const orders = useCollection('onlineOrders')
+  const { data: recurring } = useRecurring()
+  // The SAME balances the Wallet page shows — read, never recomputed. One thing
+  // in this app knows how to compute a balance; this consumes its output.
+  const { balances } = useAccountBalances()
   const passes = useCollection('commutePasses')
   const commuteTrips = useCollection('commuteTrips')
   const windfalls = useCollection('windfalls')
@@ -141,6 +150,47 @@ export default function Review() {
       .sort((a, b) => b.spent / b.cap - a.spent / a.cap)
   }, [settings?.budgets, spendByCategory])
   const blown = budgets.filter((b) => b.spent > b.cap)
+
+  // Raw forecast output, for eyeballing against real data before anything ever
+  // narrates it. Computed from what this page already loads — no extra reads.
+  //
+  // `today` is passed explicitly: the engine never reaches for the clock, which
+  // is what makes every number here reproducible in a test.
+  const signals = useMemo(
+    () =>
+      ['JP', 'IN'].flatMap((currency) =>
+        forecastSignals({
+          expenses: expenses.data,
+          previousMonths: [prevExpenses.data],
+          recurringDue: (recurring || []).filter((r) => r.active && r.kind === 'expense'),
+          budgets: settings?.budgets || {},
+          passes: passes.data,
+          trips: commuteTrips.data,
+          fare: settings?.commute?.fare ? settings.commute.fare * 2 : 560,
+          expectedIncome: Math.max(totals.income, settings?.salaryAmount || 0),
+          savingsTarget: settings?.monthlySavingsTarget || 0,
+          sent: totals.transfers,
+          // Null when there is nothing to read, so the runway says "unknown"
+          // rather than "broke".
+          available: spendableTotal(balances, currency),
+          salaryDay: settings?.salaryDay || 25,
+          currency,
+          today,
+        })
+      ),
+    [
+      expenses.data,
+      prevExpenses.data,
+      recurring,
+      settings,
+      passes.data,
+      commuteTrips.data,
+      totals.income,
+      totals.transfers,
+      balances,
+      today,
+    ]
+  )
 
   // What's free to send home: what you kept, minus your savings target, minus
   // anything already sent this month. Rounded down to a clean ¥1,000.
@@ -477,6 +527,12 @@ export default function Review() {
               {reviewed ? 'Reviewed' : 'Mark reviewed'}
             </button>
           </div>
+
+          {/* What the figures mean, said once. The raw panel stays underneath
+              for auditing — the sentences are derived from exactly those
+              numbers and nothing else. */}
+          <NarratedSignals signals={signals} />
+          <SignalsPanel signals={signals} />
         </>
       )}
     </div>

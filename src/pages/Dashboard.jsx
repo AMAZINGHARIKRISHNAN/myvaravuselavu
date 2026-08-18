@@ -18,6 +18,7 @@ import { useRecurring } from '../hooks/useRecurring'
 import { useToday } from '../hooks/useToday'
 import GreetingHeader from '../components/dashboard/GreetingHeader'
 import HudGreeting from '../components/hud/HudGreeting'
+import { forecastSignals } from '../lib/forecast'
 import MonthlyReportCard from '../components/dashboard/MonthlyReportCard'
 import RateBanner from '../components/dashboard/RateBanner'
 import GlanceStrip from '../components/dashboard/GlanceStrip'
@@ -88,6 +89,13 @@ export default function Dashboard() {
   const transfers = useCollection('transfers', { dateRange })
   const prevIncome = useCollection('income', { dateRange: prevRange })
   const prevExpenses = useCollection('expenses', { dateRange: prevRange })
+
+  // What the quick-add box learns your shops from. Both months are already on
+  // screen above it, so this is knowledge the page has already paid for.
+  const quickAddHistory = useMemo(
+    () => [...expenses.data, ...prevExpenses.data],
+    [expenses.data, prevExpenses.data]
+  )
   const prevTransfers = useCollection('transfers', { dateRange: prevRange })
   const allTimeIncome = useCollection('income', { enabled: emergencyEnabled })
   const allTimeExpenses = useCollection('expenses', { enabled: emergencyEnabled })
@@ -169,6 +177,23 @@ export default function Dashboard() {
       }
     }, [income.data, expenses.data, transfers.data])
   const animatedNetSavings = useAnimatedNumber(netSavings)
+
+  // One line for the suit to say, from real figures. Yen only: the greeting has
+  // room for a single sentence and the home currency is the one that governs a
+  // day's spending.
+  const signals = useMemo(
+    () =>
+      forecastSignals({
+        expenses: expenses.data,
+        expectedIncome: Math.max(totalIncome, settings?.salaryAmount || 0),
+        savingsTarget: settings?.monthlySavingsTarget || 0,
+        sent: totalTransfers,
+        budgets: settings?.budgets || {},
+        salaryDay: settings?.salaryDay || 25,
+        today,
+      }),
+    [expenses.data, totalIncome, totalTransfers, settings, today]
+  )
 
   const { prevTotalIncome, prevTotalExpenses, prevTotalTransfers, prevSavingsRate } = useMemo(() => {
     const t = monthTotals({
@@ -437,6 +462,7 @@ export default function Dashboard() {
           safe={safeToSpend}
           settings={settings}
           expenses={expenses.data}
+          signals={signals}
         />
       ) : (
         <GreetingHeader salaryInDays={salaryInDays} />
@@ -451,7 +477,9 @@ export default function Dashboard() {
 
       {isCurrentMonth && (
         <div className="space-y-3">
-          <QuickAdd />
+          {/* Two months of records, already loaded for the cards above. Enough
+              for it to know your usual shops without costing a single read. */}
+          <QuickAdd history={quickAddHistory} />
           <QuickRepeat recentExpenses={[...expenses.data, ...prevExpenses.data]} />
         </div>
       )}

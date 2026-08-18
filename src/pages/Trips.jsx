@@ -14,6 +14,7 @@ import {
 import { CATEGORY_ICONS } from '../lib/constants'
 import { countryOf } from '../lib/money'
 import {
+  deleteTripOps,
   isActive,
   perDay,
   searchUntagged,
@@ -243,7 +244,6 @@ function TripSheet({ trip, expenses, losses = [], onEdit, onClose }) {
   const batchOps = useBatchOps()
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
-  const { remove } = useCollection('trips')
 
   const tagged = useMemo(() => tripExpenses(expenses, trip?.id), [expenses, trip?.id])
   const totals = useMemo(() => tripTotals(expenses, trip?.id), [expenses, trip?.id])
@@ -441,11 +441,25 @@ function TripSheet({ trip, expenses, losses = [], onEdit, onClose }) {
           type="button"
           disabled={busy}
           onClick={async () => {
-            // Untag first: deleting the trip alone would leave every expense
-            // pointing at something that no longer exists.
-            await run(untagOps(tagged, tagged.map((e) => e.id)), `${trip.name} deleted`)
-            await remove(trip.id)
-            onClose()
+            // ONE commit: detach every expense and loss, and delete the trip.
+            // These were two calls, so a failure between them left records
+            // pointing at a trip that was gone — and the losses were never
+            // detached at all.
+            //
+            // commitOps refuses past 500 rather than splitting, because a
+            // split delete is exactly the half-done state this is fixing. That
+            // refusal is surfaced rather than swallowed.
+            const ops = deleteTripOps(trip, expenses, losses)
+            setBusy(true)
+            try {
+              await batchOps(ops)
+              toast(`${trip.name} deleted`)
+              onClose()
+            } catch (err) {
+              toast(`⚠️ ${err?.message || 'Could not delete that — try again'}`)
+            } finally {
+              setBusy(false)
+            }
           }}
           className="min-h-11 rounded-xl px-4 text-sm font-semibold text-red-600 dark:text-red-400"
         >

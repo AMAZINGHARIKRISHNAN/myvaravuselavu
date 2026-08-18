@@ -46,10 +46,18 @@ describe('a story never becomes a one-line expense', () => {
 
   // The exact failure: proving the local parser really does misread it, so the
   // test is guarding against something real rather than a hypothetical.
-  it('the local parser really would have logged twelve yen', () => {
+  //
+  // It used to come back as twelve yen, from the "12" in "12 Sep". The parser
+  // reads dates now, so that particular number is no longer up for grabs — and
+  // it simply takes the next one instead. Which is the whole point: the guard
+  // is not about one wrong figure, it is about prose never being a one-line
+  // expense however well the parser reads. Asserted as "not the real total,
+  // and absurdly small" so it keeps holding as the parser gets better.
+  it('the local parser really would misread it', () => {
     const answer = askJarvis(STORY, ctx)
     expect(answer.intent).toBe('log')
-    expect(answer.payload.amount).toBe(12)
+    expect(answer.payload.amount).not.toBe(131080)
+    expect(answer.payload.amount).toBeLessThan(100)
   })
 })
 

@@ -50,18 +50,35 @@ export default function Login() {
           </div>
         )}
 
+        {/* Real labels, visually hidden.
+            A placeholder is not a label: it disappears the moment you type, and
+            a screen reader announcing "edit text" tells you nothing about which
+            field you are in. The design keeps the placeholder look; the label
+            exists for anything that is not a pair of eyes. */}
         <div className="space-y-3">
+          <label htmlFor="login-email" className="sr-only">
+            Email
+          </label>
           <input
+            id="login-email"
+            name="email"
             type="email"
             required
+            autoComplete="email"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="input"
           />
+          <label htmlFor="login-password" className="sr-only">
+            Password
+          </label>
           <input
+            id="login-password"
+            name="password"
             type="password"
             required
+            autoComplete="current-password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

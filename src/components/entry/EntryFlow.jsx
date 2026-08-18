@@ -18,7 +18,8 @@ import { isRouteCategory, normalizePlace, recentPlaces, recordPlaces, swapRoute 
 import { fundingSources, countryOf } from '../../lib/money'
 import { CATEGORIES, CATEGORY_ICONS, methodCountry } from '../../lib/constants'
 import { activeTrip } from '../../lib/trips'
-import { groupOwner } from '../../lib/sharedGroups'
+import ReceiptCapture from './ReceiptCapture'
+import { groupOwner, mirrorEditOps } from '../../lib/sharedGroups'
 
 const STEPS = ['amount', 'category', 'payment', 'confirm']
 const STEP_LABELS = { amount: 'Amount', category: 'Category', payment: 'Payment', confirm: 'Confirm' }
@@ -40,7 +41,7 @@ function loadLastPayment() {
 
 export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, onSaved }) {
   const { settings } = useSettings()
-  const { add, update } = useCollectionWriters('expenses')
+  const { add } = useCollectionWriters('expenses')
   // Card top-ups are NOT expenses — they move money bank → prepaid card. The
   // spending happens later, when the card pays for something.
   const { add: addRecharge } = useCollectionWriters('pasmoRecharges')
@@ -53,7 +54,6 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
   // Shared-group link: an expense can also be dropped into a group ledger,
   // where it splits equally between the members (Groups tab).
   const { data: groups } = useCollection('groups')
-  const { update: updateGroupEntry } = useCollectionWriters('groupExpenses')
   const batchOps = useBatchOps()
   const { toast } = useToast()
 
@@ -85,6 +85,9 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
       null
   )
   const [note, setNote] = useState(initial?.note || '')
+  // What a photographed receipt listed, shown on the confirm step so the total
+  // can be checked against the items before saving.
+  const [receiptLines, setReceiptLines] = useState([])
   // Where the money was spent. Free text (shops change, no fixed list), but
   // backed by chips + a datalist of your own past shops so it stays one tap
   // for regulars and spellings stay consistent enough to rank later.
@@ -222,6 +225,22 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
     } else {
       setStepIndex((i) => i - 1)
     }
+  }
+
+  // A receipt draft fills the fields it could read and then hands over.
+  //
+  // It deliberately does NOT set the payment method or the country: the paper
+  // does not know which card was used, and the card decides the currency. So it
+  // lands on the payment step with everything else already filled — one tap
+  // from a confirm screen, and no write until that confirm.
+  const applyReceipt = (draft) => {
+    const r = draft.record
+    if (r.amount) setAmount(String(r.amount))
+    if (r.category) setCategory(r.category)
+    if (r.store) setStore(r.store)
+    if (r.date) setDateStr(toDateInputValue(r.date))
+    setReceiptLines(draft.lineItems || [])
+    setStepIndex(STEPS.indexOf('payment'))
   }
 
   const handleSelectPayment = (opt) => {
@@ -586,17 +605,21 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
         ...(initial?.id ? {} : onTrip ? { tripId: onTrip.id } : {}),
       }
       if (initial?.id) {
-        await update(initial.id, payload)
-        // Expense already linked to a group entry → keep the ledger copy in
-        // step so the group's split math follows this edit.
-        if (initial.groupEntryId) {
-          await updateGroupEntry(initial.groupEntryId, {
-            amount: payload.amount,
+        // ONE commit when the expense mirrors a group entry.
+        //
+        // These were two awaits, so a failure between them left the personal
+        // expense and the group's split maths disagreeing about the same
+        // purchase — and the group is where someone else's share is computed,
+        // so the disagreement is about what a person owes. The create path
+        // below already commits both sides together; an edit must too.
+        await batchOps(
+          mirrorEditOps({
+            expenseId: initial.id,
+            groupEntryId: initial.groupEntryId,
+            payload,
             item: note.trim() || payload.store || category || 'Expense',
-            store: payload.store,
-            date: payload.date,
           })
-        }
+        )
       } else {
         if (forFriend) payload.friend = friendCalcs.map((f) => f.name.trim()).join(', ')
         // One Friend-ledger row per friend, so each person's debt and
@@ -669,7 +692,13 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
         JSON.stringify({ paymentMethod, country: payload.country })
       )
       // Learn the shop on edits too — that's often where a typo gets fixed.
-      recordStore(payload.store)
+      recordStore(payload.store, {
+        category: payload.category,
+        paymentMethod,
+        // Only ever consulted for cash, which cannot say by itself — see
+        // storeMemory. Every other method carries its own currency.
+        country: payload.country,
+      })
       // Learn the stops, so the usual ones become one-tap chips next time.
       recordPlaces(payload.fromPlace, payload.toPlace)
       toast(
@@ -740,13 +769,20 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
           entry's country is a good guess — so a run of rupee expenses shows ₹
           and an un-dimmed decimal point from the very first keystroke. */}
       {step === 'amount' && (
-        <Keypad
-          value={amount}
-          onChange={setAmount}
-          onNext={goNext}
-          quickAmounts={topAmounts(3, country || 'JP')}
-          country={country || 'JP'}
-        />
+        <>
+          <Keypad
+            value={amount}
+            onChange={setAmount}
+            onNext={goNext}
+            quickAmounts={topAmounts(3, country || 'JP')}
+            country={country || 'JP'}
+          />
+          {/* Offered beside the keypad, never instead of it. A receipt fills
+              the fields in and then stops — the card is still chosen by hand,
+              because the card is what decides the currency, and Save is still
+              the only thing that writes. */}
+          {!initial && <ReceiptCapture onDraft={applyReceipt} />}
+        </>
       )}
 
       {step === 'category' && (
@@ -1076,6 +1112,24 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
               className="input"
             />
           </label>
+
+          {/* What the photograph listed. Shown so the total can be checked
+              against the items before saving — the items are usually the
+              pre-tax subtotal, so they are NOT expected to add up to it, and
+              seeing both is how a misread total gets caught. */}
+          {receiptLines.length > 0 && (
+            <div className="rounded-xl bg-gray-100/80 p-2.5 dark:bg-neutral-800/50">
+              <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                Read from the receipt
+              </p>
+              {receiptLines.map((line, i) => (
+                <p key={i} className="flex justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+                  <span className="min-w-0 truncate">{line.name}</span>
+                  <span className="shrink-0 tabular-nums">{line.amount.toLocaleString()}</span>
+                </p>
+              ))}
+            </div>
+          )}
 
           <input
             type="text"

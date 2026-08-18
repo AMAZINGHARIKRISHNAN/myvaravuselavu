@@ -14,7 +14,9 @@ import FloatingActionButton from '../components/ui/FloatingActionButton'
 import Skeleton from '../components/ui/Skeleton'
 import SwipeableRow from '../components/ui/SwipeableRow'
 
-export const STORES = [
+// Not exported: nothing outside this page uses it, and exporting a constant
+// from a component file is what breaks fast refresh.
+const STORES = [
   { name: 'Temu', emoji: '🧧' },
   { name: 'Shein', emoji: '👗' },
   { name: 'Amazon', emoji: '📦' },

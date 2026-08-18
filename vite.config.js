@@ -32,6 +32,12 @@ export default defineConfig({
     __APP_BUILT_AT__: JSON.stringify(new Date().toISOString()),
   },
   build: {
+    // Wipe dist first. Without this, chunks from earlier builds accumulate —
+    // 50 files where only 12 were current — and the PWA precache glob happily
+    // sweeps the orphans into the manifest, so every install downloaded dead
+    // code. Vite is documented to default this to true; it demonstrably was not
+    // happening here, so it is stated rather than assumed.
+    emptyOutDir: true,
     // Keep big, rarely-changing vendors in their own chunks so their hashes
     // survive app-code deploys and the PWA precache only re-downloads the
     // small app chunks on update.

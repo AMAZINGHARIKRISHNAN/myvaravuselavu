@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   activeTrip,
+  deleteTripOps,
   isActive,
   onTrip,
   perDay,
@@ -310,5 +311,68 @@ describe('a real trip, end to end', () => {
       forgone: { JP: 0, IN: 0 },
       total: { JP: 0, IN: 0 },
     })
+  })
+})
+
+// Deleting a trip used to be two commits: untag the expenses, then delete the
+// trip. A failure between them left expenses pointing at a trip that was gone.
+// Worse, the loss side was never detached at all — an attached unpaid-leave day
+// was orphaned on every single delete.
+describe('deleting a trip', () => {
+  const trip = { id: 't1', name: 'India', startDate: day(11) }
+  const expenses = [
+    spend('a', 1000, { tripId: 't1' }),
+    spend('b', 2000, { tripId: 't1' }),
+    spend('c', 500), // untagged — none of its business
+    spend('d', 700, { tripId: 'other' }),
+  ]
+  const losses = [
+    { id: 'l1', tripId: 't1', paid: 14500 },
+    { id: 'l2', tripId: 'other', paid: 900 },
+  ]
+
+  it('detaches every expense on the trip, and no others', () => {
+    const ops = deleteTripOps(trip, expenses, losses)
+    const detached = ops.filter((o) => o.name === 'expenses')
+    expect(detached.map((o) => o.id)).toEqual(['a', 'b'])
+    expect(detached.every((o) => o.data.tripId === null)).toBe(true)
+  })
+
+  // The half the old code forgot entirely.
+  it('detaches the losses too', () => {
+    const ops = deleteTripOps(trip, expenses, losses)
+    const detached = ops.filter((o) => o.name === 'losses')
+    expect(detached).toEqual([
+      { op: 'update', name: 'losses', id: 'l1', data: { tripId: null } },
+    ])
+  })
+
+  it('deletes the trip last, in the same list', () => {
+    const ops = deleteTripOps(trip, expenses, losses)
+    expect(ops.at(-1)).toEqual({ op: 'delete', name: 'trips', id: 't1' })
+  })
+
+  // The point of the change: one list means one commit means no window in
+  // which a record can point at a trip that no longer exists.
+  it('is a single op list, so nothing can land halfway', () => {
+    const ops = deleteTripOps(trip, expenses, losses)
+    expect(ops).toHaveLength(4) // 2 expenses + 1 loss + the delete
+    expect(new Set(ops.map((o) => o.name))).toEqual(new Set(['expenses', 'losses', 'trips']))
+  })
+
+  it('is just the delete when nothing is attached', () => {
+    expect(deleteTripOps(trip, [], [])).toEqual([
+      { op: 'delete', name: 'trips', id: 't1' },
+    ])
+  })
+
+  it('does nothing without a trip to delete', () => {
+    expect(deleteTripOps(null, expenses, losses)).toEqual([])
+    expect(deleteTripOps({}, expenses, losses)).toEqual([])
+  })
+
+  it('skips a record it cannot address', () => {
+    const ops = deleteTripOps(trip, [{ tripId: 't1', amount: 1 }], [{ tripId: 't1', paid: 1 }])
+    expect(ops).toEqual([{ op: 'delete', name: 'trips', id: 't1' }])
   })
 })

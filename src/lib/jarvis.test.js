@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { askJarvis, sayYen } from './jarvis'
+import { answerLogDraft, askJarvis, sayYen } from './jarvis'
 
 const now = new Date(2026, 7, 1, 12, 0) // 1 Aug 2026
 
@@ -179,5 +179,70 @@ describe('a stated amount is a report, not a question', () => {
 
   it('surfaces the payment method on the confirm lines', () => {
     expect(ask('coffee 450 pasmo').lines.some((l) => /Paid with Pasmo/.test(l))).toBe(true)
+  })
+})
+
+// A rupee expense used to be confirmed in yen: the sentence resolved the card
+// correctly and the spoken line said "yen" anyway, which is the one place a
+// wrong currency is read out loud before it is saved.
+describe('confirming a log says the right currency', () => {
+  const ctx = { settings: { accounts: [{ label: 'ICICI Bank', country: 'IN' }] } }
+
+  it('speaks rupees for an Indian account', () => {
+    const answer = askJarvis('1500 amazon icici', ctx)
+    expect(answer.intent).toBe('log')
+    expect(answer.payload).toMatchObject({ paymentMethod: 'ICICI Bank', country: 'IN' })
+    expect(answer.speech).toContain('rupees')
+    expect(answer.lines).toContain('₹1,500')
+  })
+
+  it('still speaks yen for everything else', () => {
+    const answer = askJarvis('450 coffee', ctx)
+    expect(answer.speech).toContain('yen')
+    expect(answer.lines).toContain('¥450')
+  })
+})
+
+// It says what it read, then asks for the one thing it will not assume.
+// Before this the same sentence came back "Logging 938 yen for other. Confirm?"
+// with a card silently inherited from whatever was used last.
+describe('a log draft asks rather than assuming', () => {
+  const ctx = { settings: { accounts: [{ label: 'MUFJ', country: 'JP' }] } }
+
+  it('asks which card, and says so out loud', () => {
+    const answer = askJarvis('938 lawson', ctx)
+    expect(answer.intent).toBe('log')
+    expect(answer.questions.map((q) => q.field)).toContain('paymentMethod')
+    expect(answer.speech).toMatch(/938 yen at Lawson/i)
+    expect(answer.speech).toMatch(/which card or account/i)
+  })
+
+  it('asks nothing when the line already said everything', () => {
+    const answer = askJarvis('1200 sukesan udon edenred', ctx)
+    expect(answer.questions).toEqual([])
+    expect(answer.speech).toMatch(/Logging 1,200 yen for food\. Confirm\?/)
+  })
+
+  it('answering the card settles the currency and ends the questions', () => {
+    const first = askJarvis('938 lawson', ctx)
+    const next = answerLogDraft(first.payload, 'paymentMethod', 'Edenred', ctx)
+    expect(next.questions).toEqual([])
+    expect(next.payload).toMatchObject({ paymentMethod: 'Edenred', country: 'JP', store: 'Lawson' })
+    expect(next.speech).toMatch(/Confirm\?/)
+  })
+
+  it('answering rupees turns the whole answer into rupees', () => {
+    const first = askJarvis('40 chai stall cash', ctx)
+    const withCurrency = answerLogDraft(first.payload, 'country', 'IN', ctx)
+    expect(withCurrency.payload.country).toBe('IN')
+    expect(withCurrency.lines).toContain('₹40')
+    expect(withCurrency.speech).toContain('rupees')
+  })
+
+  // The escape hatch: whatever is unanswered, the payload is still a record
+  // the entry sheet can open. Questions never block logging.
+  it('always carries a usable record while it asks', () => {
+    const answer = askJarvis('938 lawson', ctx)
+    expect(answer.payload).toMatchObject({ amount: 938, store: 'Lawson', kind: 'expense' })
   })
 })

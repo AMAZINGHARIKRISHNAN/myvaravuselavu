@@ -845,6 +845,14 @@ function AppLockSettings() {
       <p className="text-xs text-gray-500 dark:text-gray-400">
         Require a PIN to open the app on this device
       </p>
+      {/* Said plainly rather than implied. The PIN is stored as an unsalted
+          hash in this browser's storage and guards a session that is already
+          signed in — it keeps a glance out, not an attacker. Your data is
+          protected by the Firebase account, not by this. */}
+      <p className="text-[11px] text-gray-400 dark:text-gray-500">
+        A convenience lock, not a security boundary — it stops someone glancing at your phone, not
+        someone determined. Your data is protected by your account sign-in.
+      </p>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 

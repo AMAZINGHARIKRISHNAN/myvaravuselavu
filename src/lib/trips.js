@@ -192,3 +192,28 @@ export function searchUntagged(expenses = [], query = '', limit = 20) {
     .sort((a, b) => (toDate(b.date)?.getTime() || 0) - (toDate(a.date)?.getTime() || 0))
     .slice(0, limit)
 }
+
+// Everything that must happen for a trip to stop existing, as ONE op list.
+//
+// Deleting the trip and detaching what points at it were two separate commits.
+// A failure between them left expenses whose `tripId` named a trip that was
+// gone — and the loss side was never detached at all, so an attached unpaid-leave
+// day was orphaned every single time. Both sides are here now, and they land
+// together or not at all.
+//
+// Order is deliberate: detachments first, the delete last. It does not matter
+// for atomicity — a batch is all-or-nothing regardless — but it reads as the
+// sequence a person would describe.
+export function deleteTripOps(trip, expenses = [], losses = []) {
+  const id = trip?.id
+  if (!id) return []
+  return [
+    ...tripExpenses(expenses, id)
+      .filter((e) => e.id)
+      .map((e) => ({ op: 'update', name: 'expenses', id: e.id, data: { tripId: null } })),
+    ...tripLosses(losses, id)
+      .filter((l) => l.id)
+      .map((l) => ({ op: 'update', name: 'losses', id: l.id, data: { tripId: null } })),
+    { op: 'delete', name: 'trips', id },
+  ]
+}

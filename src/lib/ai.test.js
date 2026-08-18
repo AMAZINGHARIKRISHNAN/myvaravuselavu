@@ -53,14 +53,16 @@ function stubFetch(text, { status = 200, body, reject = false } = {}) {
 
 // A feature that is actually built. The gate refuses anything with
 // `ready: false`, so a test asserting the gate must use one that passes it.
-const BUILT = AI_FEATURES.find((f) => f.ready).key
-const OTHER_BUILT = AI_FEATURES.filter((f) => f.ready)[1]?.key
+const BUILT = AI_FEATURES.find((f) => f.ready && !f.defaultOff).key
+const OTHER_BUILT = AI_FEATURES.filter((f) => f.ready && !f.defaultOff)[1]?.key
 
 describe('feature flags', () => {
   // On unless turned off: one user, his own key, his own data. Making him find
   // a settings screen before a feature works protects nobody.
-  it('is on by default for every feature that is built', () => {
-    for (const f of AI_FEATURES.filter((x) => x.ready)) expect(aiEnabled(f.key)).toBe(true)
+  it('is on by default for every built feature that is not opt-in', () => {
+    for (const f of AI_FEATURES.filter((x) => x.ready && !x.defaultOff)) {
+      expect(aiEnabled(f.key), f.key).toBe(true)
+    }
   })
 
   // `ready: false` means the code is not there. Defaulting those on would
@@ -70,7 +72,7 @@ describe('feature flags', () => {
   })
 
   it('stays off once turned off', () => {
-    const built = AI_FEATURES.find((f) => f.ready).key
+    const built = AI_FEATURES.find((f) => f.ready && !f.defaultOff).key
     setAiEnabled(built, false)
     expect(aiEnabled(built)).toBe(false)
     setAiEnabled(built, true)
@@ -394,12 +396,15 @@ describe('ask', () => {
 // The feature failed on its first real use with "I could not read that one".
 // The model had simply been busy — a 503 — and there was no retry, so a
 // transient shrug became a dead end.
+// These wait out the REAL backoff — 1200ms, then 2400ms — so they sit at about
+// 3.6s against vitest's 5s default and fail whenever the machine is busy. The
+// assertions are unchanged; only the clock they are given is.
 describe('a busy model is not a failure', () => {
   const okBody = {
     candidates: [{ content: { parts: [{ text: 'fine' }] } }],
   }
 
-  it('retries a 503 and succeeds', async () => {
+  it('retries a 503 and succeeds', { timeout: 20000 }, async () => {
     let calls = 0
     vi.stubGlobal('fetch', async () => {
       calls += 1
@@ -410,7 +415,7 @@ describe('a busy model is not a failure', () => {
     expect(calls).toBe(3)
   })
 
-  it('retries a 429 as well', async () => {
+  it('retries a 429 as well', { timeout: 20000 }, async () => {
     let calls = 0
     vi.stubGlobal('fetch', async () => {
       calls += 1
@@ -420,7 +425,7 @@ describe('a busy model is not a failure', () => {
     await expect(ask('x', { feature: BUILT })).resolves.toBe('fine')
   })
 
-  it('gives up honestly rather than retrying forever', async () => {
+  it('gives up honestly rather than retrying forever', { timeout: 20000 }, async () => {
     let calls = 0
     vi.stubGlobal('fetch', async () => {
       calls += 1
@@ -450,5 +455,58 @@ describe('a busy model is not a failure', () => {
     await ask('x', { feature: BUILT, json: true })
     expect(sent.generationConfig.responseMimeType).toBe('application/json')
     expect(sent.generationConfig.temperature).toBe(0)
+  })
+})
+
+// Receipt scanning sends a photograph — the richest thing this app can
+// transmit — so it is the one feature that must be switched on deliberately.
+describe('the opt-in features', () => {
+  // Two now: the receipt photo and the free-form question. Both send something
+  // richer than a figure, so both are a deliberate yes rather than a default.
+  const optIn = AI_FEATURES.find((f) => f.key === 'receipts')
+
+  it('receipt scanning is built, sensitive and opt-in', () => {
+    expect(optIn.ready).toBe(true)
+    expect(optIn.sensitive).toBe(true)
+    expect(optIn.defaultOff).toBe(true)
+  })
+
+  it('free-form questions are opt-in too', () => {
+    const assistant = AI_FEATURES.find((f) => f.key === 'assistant')
+    expect(assistant.ready).toBe(true)
+    expect(assistant.defaultOff).toBe(true)
+    expect(aiEnabled('assistant')).toBe(false)
+  })
+
+  it('is off until it is turned on', () => {
+    expect(aiEnabled('receipts')).toBe(false)
+    setAiEnabled('receipts', true)
+    expect(aiEnabled('receipts')).toBe(true)
+    setAiEnabled('receipts', false)
+    expect(aiEnabled('receipts')).toBe(false)
+  })
+
+  it('stays off when the switch cannot be read — that is not consent', () => {
+    globalThis.localStorage = {
+      getItem: () => { throw new Error('blocked') },
+      setItem: () => {},
+    }
+    expect(aiEnabled('receipts')).toBe(false)
+  })
+
+  // Making receipts opt-in must not quietly switch off a feature already in use.
+  it('leaves the other built features on by default', () => {
+    for (const f of AI_FEATURES.filter((x) => x.ready && !x.defaultOff)) {
+      expect(aiEnabled(f.key), f.key).toBe(true)
+    }
+  })
+
+  it('says plainly what travels, for each of them', () => {
+    expect(optIn.hint).toMatch(/photo/i)
+    expect(optIn.hint).toMatch(/google/i)
+    const assistant = AI_FEATURES.find((f) => f.key === 'assistant')
+    expect(assistant.hint).toMatch(/question/i)
+    // And says the figure does not travel, which is the point of the design.
+    expect(assistant.hint).toMatch(/calculated on this device/i)
   })
 })

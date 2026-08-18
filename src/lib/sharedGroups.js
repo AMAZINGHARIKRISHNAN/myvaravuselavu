@@ -149,3 +149,39 @@ export function settleSuggestions(report) {
   }
   return transfers
 }
+
+// Editing an expense that is mirrored into a group ledger, as ONE op list.
+//
+// These were two separate awaits: update the expense, then update the group
+// copy. A failure between them left the two disagreeing about the same
+// purchase — and the group ledger is where somebody else's share is computed,
+// so the disagreement was about what a person owes.
+//
+// Returning a list rather than performing the writes is what makes the
+// guarantee testable: one list is one commitOps call, and commitOps is
+// all-or-nothing (see firestore.test.js). The create path has always worked
+// this way; the edit path now matches it.
+export function mirrorEditOps({ expenseId, groupEntryId, payload, item }) {
+  if (!expenseId) return []
+  return [
+    { op: 'update', name: 'expenses', id: expenseId, data: payload },
+    // Only the fields the group's split maths actually reads. Copying the
+    // whole expense would drag payment method and country into a ledger that
+    // has no use for them.
+    ...(groupEntryId
+      ? [
+          {
+            op: 'update',
+            name: 'groupExpenses',
+            id: groupEntryId,
+            data: {
+              amount: payload.amount,
+              item,
+              store: payload.store,
+              date: payload.date,
+            },
+          },
+        ]
+      : []),
+  ]
+}

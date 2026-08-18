@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Search, Pencil, Trash2, Banknote, ChevronRight } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
+import { useSettings } from '../hooks/useSettings'
 import { buildActivityFeed } from '../lib/activity'
 import { useCollectionWriters } from '../hooks/useCollectionWriters'
 import { useUndoableDelete } from '../hooks/useUndoableDelete'
 import { CATEGORIES, CATEGORY_ICONS, COUNTRIES } from '../lib/constants'
 import { formatJPY, formatINR, formatByCountry, toDateInputValue, parseDateInput } from '../lib/format'
-import { downloadCsv, formatDateForCsv, parseCsvDate } from '../lib/csv'
+import { downloadCsv, expenseFromCsvRow, formatDateForCsv, parseCsvDate } from '../lib/csv'
 import { normalizeStore, rankStores, storeKey } from '../lib/stores'
 import { hasRoute, routeLabel } from '../lib/route'
 import EntryFlow from '../components/entry/EntryFlow'
@@ -20,6 +21,7 @@ import CsvImportButton from '../components/ui/CsvImportButton'
 import FloatingActionButton from '../components/ui/FloatingActionButton'
 import SwipeableRow from '../components/ui/SwipeableRow'
 import { countryOf } from '../lib/money'
+import { capGroups, ROW_LIMIT } from '../lib/listWindow'
 
 const EMPTY = ''
 
@@ -32,6 +34,10 @@ export default function History() {
   const [paymentMethod, setPaymentMethod] = useState(EMPTY)
   const [store, setStore] = useState(EMPTY)
   const [search, setSearch] = useState('')
+  // Needed so an imported row's currency can be derived from the account
+  // its payment method names.
+  const { settings } = useSettings()
+  const accounts = settings?.accounts || []
   const [editing, setEditing] = useState(null)
   // Which editor to open. Used to be inferred from the active tab, so the
   // All tab — where `tab` is neither 'expenses' nor 'income' — rendered no
@@ -255,6 +261,13 @@ export default function History() {
     })
   }, [tab, activityFiltered, records])
 
+  // Bounded DOM on a long history. Below the threshold this is the same array
+  // the grouping produced, so a normal month renders exactly as before.
+  const { groups: visibleGroups, hidden: hiddenRows } = useMemo(
+    () => capGroups(dayGroups),
+    [dayGroups]
+  )
+
   const handleExport = () => {
     if (tab === 'all') {
       downloadCsv(
@@ -453,22 +466,11 @@ export default function History() {
         <CsvImportButton
           mapRow={
             tab === 'expenses'
-              ? (row) => {
-                  const amount = parseFloat(row.Amount)
-                  const date = parseCsvDate(row.Date)
-                  if (!amount || !date) return null
-                  return {
-                    amount,
-                    category: row.Category || 'Other',
-                    country: row.Country || 'JP',
-                    paymentMethod: row['Payment Method'] || 'Cash',
-                    store: normalizeStore(row.Store),
-                    fromPlace: row.From || '',
-                    toPlace: row.To || '',
-                    note: row.Note || '',
-                    date,
-                  }
-                }
+              ? // The payment method decides the currency, exactly as every entry
+                // form does. The CSV's own Country column is only consulted
+                // where the method genuinely cannot say — cash, or a method the
+                // app no longer knows.
+                (row) => expenseFromCsvRow(row, accounts, { normalizeStore })
               : (row) => {
                   const amount = parseFloat(row.Amount)
                   const date = parseCsvDate(row.Date)
@@ -513,7 +515,7 @@ export default function History() {
             the page already on screen, so the tap did nothing. The rest still
             tap through to the screen that owns them. */}
         {tab === 'all' &&
-          dayGroups.map((group) => (
+          visibleGroups.map((group) => (
             <div key={group.key} className="space-y-2">
               <p className="status-line px-1 pt-2 text-xs font-semibold text-gray-400">
                 {group.label}
@@ -572,7 +574,7 @@ export default function History() {
           ))}
 
         {tab !== 'all' &&
-          dayGroups.map((group) => (
+          visibleGroups.map((group) => (
           <div key={group.key} className="space-y-2">
             <div className="flex items-baseline justify-between gap-3 px-1 pt-2">
               {/* Grows rather than shrinks, so the status-line rule draws
@@ -598,6 +600,17 @@ export default function History() {
           </div>
         ))}
       </div>
+
+      {/* Said out loud rather than truncating in silence. A list that quietly
+          stops at 300 looks like missing data; narrowing the range or exporting
+          is the honest way to reach the rest. */}
+      {hiddenRows > 0 && (
+        <p className="px-1 pt-2 text-center text-[11px] text-gray-400 dark:text-gray-500">
+          Showing the most recent {ROW_LIMIT.toLocaleString()} — {hiddenRows.toLocaleString()} older
+          {hiddenRows === 1 ? ' record is' : ' records are'} not drawn. Narrow the date range, or
+          export to CSV for the lot.
+        </p>
+      )}
 
       {/* The all-activity tab gets the button too: the entry sheet covers
           everything that shows up there — expenses, a split of one lump sum,

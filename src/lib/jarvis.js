@@ -16,10 +16,13 @@
 import { toDate } from './format'
 import { daysUntilSalary, todayTotal } from './streak'
 import { parseExpenseText } from './parseExpenseText'
+import { answerShorthand, shorthandDraft } from './shorthand'
+import { vocabulary } from './storyIntake'
 import { routeLabel } from './route'
 
 // Spoken yen: "2,610" reads badly, "2610 yen" reads fine.
 export const sayYen = (n) => `${Math.round(Math.abs(n || 0)).toLocaleString('en-US')} yen`
+export const sayRupees = (n) => `${Math.round(Math.abs(n || 0)).toLocaleString('en-US')} rupees`
 
 const has = (text, ...words) => words.some((w) => text.includes(w))
 
@@ -39,28 +42,73 @@ const QUESTION_START =
 
 // Returns the parsed draft when the sentence reads as a statement of spending,
 // or null when it should be treated as a question.
-function statedExpense(input, text) {
+function statedExpense(input, text, ctx) {
   if (text.includes('?')) return null
   if (QUESTION_START.test(text)) return null
-  const parsed = parseExpenseText(input)
+  const parsed = parseExpenseText(input, parseOptions(ctx))
   return parsed?.amount > 0 ? parsed : null
 }
 
+// What the parser is allowed to know: your account labels, so "3400 aeon mufj"
+// picks the right bank, and the shops this device has already seen, so a name
+// with no preposition in front of it still lands in the store field.
+const parseOptions = (ctx) => ({
+  accounts: ctx?.settings?.accounts || [],
+  known: ctx?.stores || [],
+})
+
+// Your accounts as the entry gate understands them. Trips are irrelevant to a
+// one-line expense, so the list is not asked for.
+// Everything ever logged, when the sheet has it — that is what makes the
+// difference between asking about Lawson once and asking every time. Falls back
+// to the month it always has.
+const historyOf = (ctx) => ctx?.history || ctx?.expenses || []
+
+const vocabOf = (ctx) => {
+  const accounts = ctx?.settings?.accounts || []
+  return { ...vocabulary({ accounts, trips: [] }), accountList: accounts }
+}
+
 // The shape a log answer takes, shared by the two places that produce one.
-function logDraft(parsed) {
+//
+// Reads the currency the parser resolved rather than assuming yen. It says
+// "yen" for everything else, including a null country, because that is the
+// same default countryOf applies to a record with no method on it — the two
+// must never disagree about what is being confirmed.
+function logDraft(parsed, ctx) {
+  // The same gate the dashboard box uses. What the sentence did not settle
+  // becomes a question the sheet can put, instead of a gap something fills in
+  // downstream without saying so.
+  const vocab = vocabOf(ctx)
+  const { record, questions } = shorthandDraft(parsed, vocab, { history: historyOf(ctx) })
+  const rupees = record.country === 'IN'
   return {
     intent: 'log',
-    payload: parsed,
-    speech: `Logging ${sayYen(parsed.amount)} for ${parsed.category?.toLowerCase() || 'other'}. Confirm?`,
+    payload: record,
+    questions,
+    vocab,
+    speech: questions.length
+      ? `${rupees ? sayRupees(record.amount) : sayYen(record.amount)}${record.store ? ` at ${record.store}` : ''}. ${questions[0].ask}`
+      : `Logging ${rupees ? sayRupees(record.amount) : sayYen(record.amount)} for ${record.category?.toLowerCase() || 'other'}. Confirm?`,
     lines: [
-      `${parsed.category || 'Other'}${parsed.store ? ` · ${parsed.store}` : ''}`,
-      `¥${(parsed.amount || 0).toLocaleString()}`,
+      `${record.category || 'Other'}${record.store ? ` · ${record.store}` : ''}`,
+      `${rupees ? '₹' : '¥'}${(record.amount || 0).toLocaleString()}`,
       // A journey identifies itself by its route, not by a shop.
-      routeLabel(parsed.fromPlace, parsed.toPlace) || null,
-      parsed.paymentMethod ? `Paid with ${parsed.paymentMethod}` : null,
+      routeLabel(record.fromPlace, record.toPlace) || null,
+      record.paymentMethod ? `Paid with ${record.paymentMethod}` : null,
     ].filter(Boolean),
     to: null,
   }
+}
+
+// One answer to one of a log draft's questions, and the whole answer rebuilt
+// around it. Exported because the sheet renders the chips but must not own the
+// rules for what a card implies — that lives here and in shorthand.js.
+export function answerLogDraft(record, field, value, ctx) {
+  const { record: next } = answerShorthand(record, field, value, vocabOf(ctx), {
+    history: historyOf(ctx),
+  })
+  return logDraft(next, ctx)
 }
 
 const sameMonth = (a, b) => a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth()
@@ -97,8 +145,8 @@ export function askJarvis(input, ctx = {}) {
   // ("spent"): a stated amount outranks them, because it can only be a report.
   // Deliberately AFTER the phrase-based intents above, so "salary 300000" is
   // still answered as a salary question rather than logged.
-  const stated = statedExpense(input, text)
-  if (stated) return logDraft(stated)
+  const stated = statedExpense(input, text, ctx)
+  if (stated) return logDraft(stated, ctx)
 
   if (has(text, 'balance', 'how much is in', 'how much do i have', 'pasmo', 'nimoca', 'edenred'))
     return balance(text, ctx)
@@ -109,8 +157,8 @@ export function askJarvis(input, ctx = {}) {
   if (has(text, 'due', 'bill', 'recurring')) return dueSoon(text, ctx)
 
   // Anything with a number left over is almost certainly an expense.
-  const parsed = parseExpenseText(input)
-  if (parsed?.amount > 0) return logDraft(parsed)
+  const parsed = parseExpenseText(input, parseOptions(ctx))
+  if (parsed?.amount > 0) return logDraft(parsed, ctx)
 
   return {
     intent: 'unknown',

@@ -6,8 +6,11 @@ import { useCollection } from '../../hooks/useCollection'
 import { useAccountBalances } from '../../hooks/useAccountBalances'
 import { useRecurring } from '../../hooks/useRecurring'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
-import { askJarvis, JARVIS_EXAMPLES } from '../../lib/jarvis'
+import { answerLogDraft, askJarvis, JARVIS_EXAMPLES } from '../../lib/jarvis'
+import AnswerChips from '../entry/AnswerChips'
+import { mergeStoreMemory, storeMemory, storeProfiles } from '../../lib/stores'
 import { ask, isAvailable } from '../../lib/ai'
+import { askAssistant } from '../../lib/assistantResolve'
 import { buildPrompt, looksLikeStory, validateDraft, vocabulary } from '../../lib/storyIntake'
 import StoryDraft from '../entry/StoryDraft'
 import { personaSpeech } from '../../lib/persona'
@@ -88,6 +91,18 @@ export default function JarvisSheet({ onClose, onLog }) {
     return out
   }, [recharges.data, allExpenses.data, officeItems.data, passes.data])
 
+  // Every shop you have ever saved, with the category, card and currency you
+  // actually used — plus anything typed on this device that the loaded records
+  // do not reach back far enough to include.
+  //
+  // Its own memo, keyed on the only thing it reads. It used to sit inside the
+  // context below, whose sixteen dependencies meant the whole ledger was
+  // re-scanned whenever a card balance or a claim changed.
+  const shopMemory = useMemo(
+    () => mergeStoreMemory(storeProfiles(allExpenses.data), storeMemory()),
+    [allExpenses.data]
+  )
+
   const ctx = useMemo(() => {
     const spent = monthExpenses.data
       .filter((e) => (e.country || 'JP') !== 'IN')
@@ -104,6 +119,10 @@ export default function JarvisSheet({ onClose, onLog }) {
     const expectedIncome = Math.max(incomeSoFar, settings?.salaryAmount || 0)
     return {
       settings,
+      stores: shopMemory,
+      // The same records, for the questions: what your cash has ever been, and
+      // which card each kind of spending actually goes on.
+      history: allExpenses.data,
       expenses: monthExpenses.data,
       income: monthIncome.data,
       transfers: monthTransfers.data,
@@ -138,6 +157,8 @@ export default function JarvisSheet({ onClose, onLog }) {
     }
   }, [
     settings,
+    shopMemory,
+    allExpenses.data,
     monthExpenses.data,
     monthIncome.data,
     monthTransfers.data,
@@ -182,6 +203,27 @@ export default function JarvisSheet({ onClose, onLog }) {
       setEntries((prev) => [...prev, { q, answer: { ...answer, speech: spoken } }])
       if (voiceOn) speak(spoken)
       return
+    }
+
+    // Not a local intent and not a story. Before giving up, see whether the
+    // model can tell which of the app's KNOWN questions this is — it maps the
+    // sentence to a query id, and the figure is then computed here. The model
+    // never supplies a number; see assistantResolve.js.
+    if (!story && isAvailable('assistant')) {
+      setReading(true)
+      try {
+        const resolved = await askAssistant(q, ctx, skin, { scope: { currency: 'JPY' } })
+        if (resolved.intent === 'resolved') {
+          setEntries((prev) => [...prev, { q, answer: resolved }])
+          if (voiceOn) speak(resolved.speech)
+          return
+        }
+        // Declined: fall through to the story reader, then to the local miss.
+      } catch {
+        /* fall through */
+      } finally {
+        setReading(false)
+      }
     }
 
     // Not something it can answer locally. Before giving up, see if the model
@@ -233,11 +275,29 @@ export default function JarvisSheet({ onClose, onLog }) {
     }
   }
 
-  const accounts = settings?.accounts || []
+  // Held steady across renders. `settings?.accounts || []` is a fresh array
+  // every time, so the vocabulary below was rebuilt on every keystroke. Safe
+  // because it only stabilises a reference — the memo it feeds computes a
+  // value and opens no listener, so nothing can re-subscribe.
+  const accounts = useMemo(() => settings?.accounts || [], [settings?.accounts])
   const vocab = useMemo(
     () => ({ ...vocabulary({ accounts, trips: journeys.data }), accountList: accounts }),
     [accounts, journeys.data]
   )
+
+  // Answering a question the log draft put. The entry is replaced in place, so
+  // the sheet reads like a conversation rather than repeating itself, and the
+  // rebuilt answer carries whatever that answer settled — choosing a card
+  // settles the currency, and usually ends the questions with it.
+  const answerLog = (index, field, value) => {
+    setEntries((prev) =>
+      prev.map((e, i) => {
+        if (i !== index) return e
+        const rebuilt = answerLogDraft(e.answer.payload, field, value, ctx)
+        return { ...e, answer: { ...rebuilt, speech: personaSpeech(skin, rebuilt) } }
+      })
+    )
+  }
 
   const { supported: voiceInput, listening, start } = useSpeechRecognition({ onResult: run })
 
@@ -259,7 +319,6 @@ export default function JarvisSheet({ onClose, onLog }) {
     })
   }
 
-  const latest = entries[entries.length - 1]
 
   return (
     <BottomSheet onClose={onClose} title="">
@@ -365,6 +424,22 @@ export default function JarvisSheet({ onClose, onLog }) {
                     ))}
                   </ul>
                 )}
+                {/* What it will not assume about a line it just heard. Asked
+                    here rather than left to the entry sheet, because the card
+                    is what decides the currency of the figure above it. */}
+                {e.answer.intent === 'log' && e.answer.questions?.length > 0 && (
+                  <div className="mt-2 border-t border-cyan-500/20 pt-2">
+                    <p className="text-[11px] font-medium text-cyan-700 dark:text-cyan-300">
+                      {e.answer.questions[0].ask}
+                    </p>
+                    <AnswerChips
+                      field={e.answer.questions[0].field}
+                      vocab={e.answer.vocab}
+                      onAnswer={(v) => answerLog(i, e.answer.questions[0].field, v)}
+                    />
+                  </div>
+                )}
+
                 {/* Two follow-ups: open the screen that owns the answer, or —
                     when it heard an expense — hand it to the entry sheet. */}
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -377,7 +452,7 @@ export default function JarvisSheet({ onClose, onLog }) {
                       }}
                       className="rounded-full bg-cyan-600 px-3 py-1 text-[11px] font-semibold text-white active:scale-95 dark:bg-cyan-500"
                     >
-                      Log it →
+                      {e.answer.questions?.length > 0 ? 'Fill it in myself →' : 'Log it →'}
                     </button>
                   )}
                   {e.answer.to && (

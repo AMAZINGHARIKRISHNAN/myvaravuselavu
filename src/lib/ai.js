@@ -51,10 +51,41 @@ const FLAG_PREFIX = 'vs_ai_'
 // features that actually do something — a toggle that silently does nothing is
 // worse than no toggle.
 export const AI_FEATURES = [
-  { key: 'assistant', label: 'Assistant answers', hint: 'Free-form questions about your own figures', ready: false },
-  { key: 'receipts', label: 'Receipt scanning', hint: 'Read a photographed receipt into the entry form', ready: false },
+  // The model classifies the question; this device computes the answer.
+  //
+  // Opt-in because it sends what you TYPE. The figures never travel and never
+  // come back — the model picks which of the app's known questions you asked,
+  // and the number you read is calculated here (see assistantResolve.js).
+  {
+    key: 'assistant',
+    label: 'Free-form questions',
+    hint: 'Sends your typed question to Google so it can work out WHICH of your figures you meant. The figure itself is always calculated on this device — the model never sees your records and never supplies a number',
+    ready: true,
+    defaultOff: true,
+  },
+  // Its own flag and its own warning, like payslips: a receipt photograph is
+  // the richest thing this app can send anywhere. It carries the shop, the
+  // date, every item bought, and whatever else happens to be in frame.
+  {
+    key: 'receipts',
+    label: 'Receipt scanning',
+    hint: 'Sends the receipt PHOTO to Google — shop, date and every line item. Fills the entry form; you still choose the card and press save',
+    ready: true,
+    sensitive: true,
+    // OPT-IN, unlike everything else here.
+    //
+    // The general default is on: one user, his own key, his own data, and
+    // making him find a settings screen before a feature works protects
+    // nobody. A receipt photograph is the exception — it is the richest thing
+    // this app can transmit, and whatever else was on the table when the photo
+    // was taken goes with it. That deserves a deliberate yes.
+    //
+    // Marked on this feature rather than derived from `sensitive`, so turning
+    // it on does not quietly switch off payslip reading, which is already used.
+    defaultOff: true,
+  },
   { key: 'entry', label: 'Conversational entry', hint: 'Describe what happened and it fills the forms — it asks about anything it is unsure of, and nothing saves until you confirm', ready: true },
-  { key: 'insights', label: 'Weekly insights', hint: 'A short written summary on the Review page', ready: false },
+  { key: 'insights', label: 'Spoken insights', hint: 'Rephrases the figures your device already calculated in your suit’s voice — it never computes anything, and it falls back to plain wording when off', ready: true },
   // Its own flag, and worded so the trade is visible before it is switched on:
   // a payslip is not a receipt, and the whole image is sent.
   {
@@ -82,11 +113,16 @@ export function aiEnabled(feature) {
   const spec = AI_FEATURES.find((f) => f.key === feature)
   if (!spec?.ready) return false
   try {
-    return localStorage.getItem(FLAG_PREFIX + feature) !== 'off'
+    const stored = localStorage.getItem(FLAG_PREFIX + feature)
+    // A feature marked defaultOff must be switched on deliberately; everything
+    // else is on unless it was switched off.
+    if (spec.defaultOff) return stored === 'on'
+    return stored !== 'off'
   } catch {
-    // Private mode, or storage blocked. On is the useful answer, and the rate
-    // guard still applies in memory.
-    return true
+    // Private mode, or storage blocked. On is the useful answer for ordinary
+    // features and the rate guard still applies in memory — but an opt-in one
+    // stays off, because an unreadable switch is not consent.
+    return !spec.defaultOff
   }
 }
 
@@ -193,6 +229,7 @@ export function isAvailable(feature) {
 // Categories and amounts do, because they are the question being asked.
 export function minimalContext(scope = {}) {
   const num = (v) => (Number.isFinite(v) ? Math.round(v) : undefined)
+  const round2 = (v) => (Number.isFinite(v) ? Math.round(v * 100) / 100 : undefined)
 
   const context = {
     currency: scope.currency === 'INR' ? 'INR' : 'JPY',
@@ -220,15 +257,45 @@ export function minimalContext(scope = {}) {
   }
 
   // Signals from forecast.js — already reduced to shapes, never raw records.
+  //
+  // Enumerated field by field, like everything else here. The list grew when
+  // narration needed real figures to phrase, and growing it was the right move
+  // ONLY because it is still an allow-list: a new field added to a signal
+  // somewhere else in the app cannot start travelling by being added, it has to
+  // be named here deliberately.
+  //
+  // Every entry is a NUMBER, a boolean, or a word from a fixed vocabulary
+  // (kind, currency, direction, and a category from the app's own list). No
+  // free text reaches this — no notes, no store names, no account labels.
   if (Array.isArray(scope.signals)) {
+    const NUMBERS = [
+      'amount', 'day', 'spent', 'upcoming', 'projectedSpend', 'projectedLeftover',
+      'perDay', 'perDaySoFar', 'daysLeft', 'daysInMonth', 'dayOfMonth',
+      'cap', 'remaining', 'crossesOnDay',
+      'average', 'delta', 'ratio',
+      'tripsToBreakEven', 'breakEvenDays', 'daysUsed',
+      'daysToSalary', 'available', 'projectedAtPayday', 'shortfall', 'daysOfRunway',
+    ]
+    const FLAGS = ['exceeded', 'withinMonth', 'brokenEven', 'willRunOut', 'expired']
+    const WORDS = { currency: ['JP', 'IN'], direction: ['up', 'down'] }
+
     context.signals = scope.signals
       .filter((s) => s && typeof s.kind === 'string')
-      .map((s) => ({
-        kind: s.kind,
-        category: s.category ? String(s.category).slice(0, 24) : undefined,
-        amount: num(s.amount),
-        day: num(s.day),
-      }))
+      .map((s) => {
+        const out = { kind: s.kind }
+        if (s.category) out.category = String(s.category).slice(0, 24)
+        for (const key of NUMBERS) {
+          // A ratio is the one figure that is meaningful below 1, so it keeps
+          // two decimals where everything else is whole money.
+          const value = key === 'ratio' ? round2(s[key]) : num(s[key])
+          if (value !== undefined) out[key] = value
+        }
+        for (const key of FLAGS) if (typeof s[key] === 'boolean') out[key] = s[key]
+        for (const [key, allowed] of Object.entries(WORDS)) {
+          if (allowed.includes(s[key])) out[key] = s[key]
+        }
+        return out
+      })
   }
 
   // Drop the undefineds so the prompt carries no empty keys.

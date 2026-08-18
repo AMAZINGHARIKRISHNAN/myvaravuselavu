@@ -38,6 +38,15 @@ export default function Layout() {
 
   return (
     <div className="min-h-svh bg-gray-900 dark:bg-neutral-950 transition-colors">
+      {/* First thing in the tab order, invisible until it has focus. Without it
+          a keyboard user tabs through the whole sidebar on every page before
+          reaching the content they navigated to. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-indigo-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white"
+      >
+        Skip to content
+      </a>
       {/* One ambient layer at a time: the HUD brings its own grid and bloom,
           and running the aurora underneath it turns both to mush. */}
       {hud ? (
@@ -111,7 +120,7 @@ export default function Layout() {
 
         <OfflineBanner />
 
-        <main className="w-full max-w-2xl lg:max-w-6xl mx-auto flex-1 px-4 py-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:px-8 lg:py-8 lg:pb-12">
+        <main id="main" tabIndex={-1} className="w-full max-w-2xl lg:max-w-6xl mx-auto flex-1 px-4 py-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] lg:px-8 lg:py-8 lg:pb-12">
           {/* A HUD navigates like an instrument re-acquiring a target; a flat
               skin just turns the page. */}
           {hud ? (

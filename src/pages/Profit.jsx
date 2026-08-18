@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, memo } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, ChevronRight, Trash2 } from 'lucide-react'
 import { useCollection } from '../hooks/useCollection'
@@ -532,7 +532,9 @@ export default function Profit() {
 }
 
 // One pass with its live break-even bar.
-function PassRow({ pass }) {
+// Memoised: it takes only the pass record, so nothing else on the page
+// re-rendering can force it to redraw.
+const PassRow = memo(function PassRow({ pass }) {
   const r = pass.result
   const pct = r.breakEvenDays ? Math.min(100, (r.days / r.breakEvenDays) * 100) : 0
   const earned = r.profit >= 0
@@ -567,8 +569,7 @@ function PassRow({ pass }) {
           : ' · every further day is profit'}
       </p>
     </div>
-  )
-}
+  )})
 
 // Log a one-off gain. Two numbers, because only you know how much of the
 // payout was your own money to begin with.
