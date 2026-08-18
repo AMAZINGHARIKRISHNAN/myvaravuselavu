@@ -4,6 +4,7 @@ import { useBatchOps } from '../../hooks/useBatchOps'
 import { useSettings } from '../../hooks/useSettings'
 import { useToast } from '../../context/ToastContext'
 import { categoryForMerchant } from '../../lib/stores'
+import { loadLastPayment } from '../../lib/lastPayment'
 import { toDateInputValue, parseDateInput, formatByCountry } from '../../lib/format'
 import { celebrate } from '../../lib/celebrate'
 import BottomSheet from '../ui/BottomSheet'
@@ -33,7 +34,13 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
   // Blank is still allowed and still means "not tracked" — the same honest
   // answer the repayment side offers — but it is now a choice rather than the
   // only possibility.
-  const [paidFrom, setPaidFrom] = useState('')
+  // Starts on the card you used last, the same way the entry sheet does. The
+  // default matters more than the field: leaving it blank meant anyone who did
+  // not notice the new question kept the old, one-sided behaviour, which is the
+  // very thing this was added to stop. "Not tracked" stays one tap away.
+  const [paidFrom, setPaidFrom] = useState(
+    () => (initial?.id ? '' : loadLastPayment()?.paymentMethod || '')
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -53,6 +60,11 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
       .map((a) => a.label),
     'Cash',
   ]
+
+  // Switching the currency drops a source that cannot hold it, rather than
+  // leaving a yen account selected under a rupee total. Derived instead of
+  // stored, so the two can never disagree.
+  const source = sourceOptions.includes(paidFrom) ? paidFrom : ''
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -81,7 +93,7 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
       }
       if (initial?.id) {
         await update(initial.id, payload)
-      } else if (paidFrom) {
+      } else if (source) {
         // ONE commit for both. The expense is what takes the money out of the
         // account; the friend row is what says it is coming back. Writing them
         // separately would leave a debt with no payment behind it — exactly
@@ -94,7 +106,7 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
               amount: payload.paid,
               category: categoryForMerchant(payload.item) || 'Other',
               country: payload.country,
-              paymentMethod: paidFrom,
+              paymentMethod: source,
               store: '',
               note: `For ${payload.friend}${payload.item ? ` · ${payload.item}` : ''}`,
               date: payload.date,
@@ -223,7 +235,7 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
                 type="button"
                 onClick={() => setPaidFrom(label)}
                 className={`min-h-9 rounded-full px-3.5 text-xs font-semibold transition-all active:scale-95 touch-manipulation ${
-                  paidFrom === label
+                  source === label
                     ? 'bg-indigo-600 text-white dark:bg-indigo-500'
                     : 'border border-gray-200 bg-gray-100/80 text-gray-700 dark:border-transparent dark:bg-neutral-800/50 dark:text-gray-300'
                 }`}
@@ -233,8 +245,8 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
             ))}
           </div>
           <p className="text-[11px] text-gray-500 dark:text-gray-400">
-            {paidFrom
-              ? `Logs ${formatByCountry(paidNum, country)} out of ${paidFrom} as well, so collecting it back cancels out.`
+            {source
+              ? `Logs ${formatByCountry(paidNum, country)} out of ${source} as well, so collecting it back cancels out.`
               : 'Nothing will be taken out of any account — only the debt is recorded.'}
           </p>
         </div>

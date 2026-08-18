@@ -11,6 +11,7 @@ import { useBatchOps } from '../../hooks/useBatchOps'
 import { useToast } from '../../context/ToastContext'
 import { formatByCountry, formatJPY, toDate, toDateInputValue, parseDateInput } from '../../lib/format'
 import { celebrate } from '../../lib/celebrate'
+import { loadLastPayment, saveLastPayment } from '../../lib/lastPayment'
 import { PREPAID_CARDS } from '../../lib/wallet'
 import { recordAmount, topAmounts } from '../../lib/quickAmounts'
 import { normalizeStore, recordStore, topStores } from '../../lib/stores'
@@ -23,20 +24,11 @@ import { groupOwner, mirrorEditOps } from '../../lib/sharedGroups'
 
 const STEPS = ['amount', 'category', 'payment', 'confirm']
 const STEP_LABELS = { amount: 'Amount', category: 'Category', payment: 'Payment', confirm: 'Confirm' }
-const LAST_PAYMENT_KEY = 'vs_last_payment'
 
 // One-tap reasons for a hand-logged credit/debit, so "why" is rarely typed.
 const MOVE_REASONS = {
   credit: ['Interest', 'Refund', 'Cashback', 'Gift received', 'Cash deposited', 'Correction'],
   debit: ['Bank fee', 'ATM fee', 'Auto-debit', 'Bill paid', 'EMI', 'Correction'],
-}
-
-function loadLastPayment() {
-  try {
-    return JSON.parse(localStorage.getItem(LAST_PAYMENT_KEY) || 'null')
-  } catch {
-    return null
-  }
 }
 
 export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, onSaved }) {
@@ -462,10 +454,7 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
       )
       celebrate()
       recordAmount(splitTotal, country || 'JP')
-      localStorage.setItem(
-        LAST_PAYMENT_KEY,
-        JSON.stringify({ paymentMethod, country: country || 'JP' })
-      )
+      saveLastPayment(paymentMethod, country || 'JP')
       toast(
         `✓ ${formatByCountry(splitTotal, country || 'JP')} logged as ${rows.length} spend${
           rows.length === 1 ? '' : 's'
@@ -700,10 +689,7 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
         celebrate()
         recordAmount(payload.amount, payload.country)
       }
-      localStorage.setItem(
-        LAST_PAYMENT_KEY,
-        JSON.stringify({ paymentMethod, country: payload.country })
-      )
+      saveLastPayment(paymentMethod, payload.country)
       // Learn the shop on edits too — that's often where a typo gets fixed.
       recordStore(payload.store, {
         category: payload.category,

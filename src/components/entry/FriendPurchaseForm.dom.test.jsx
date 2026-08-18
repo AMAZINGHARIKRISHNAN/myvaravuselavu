@@ -120,3 +120,49 @@ describe('a purchase now says where the money came from', () => {
     expect(batchOps).not.toHaveBeenCalled()
   })
 })
+
+// The default is the fix. A field you have to remember to tap is exactly how
+// the one-sided rows got there in the first place.
+describe('it starts on the answer that records the money', () => {
+  const withLastPayment = (method, country = 'JP') =>
+    globalThis.localStorage.setItem('vs_last_payment', JSON.stringify({ paymentMethod: method, country }))
+
+  it('preselects the card used last, so saving deducts by default', () => {
+    withLastPayment('MUFJ')
+    renderPage(<FriendPurchaseForm onClose={vi.fn()} />)
+    fill()
+    submit()
+
+    const ops = batchOps.mock.calls[0][0]
+    expect(ops.map((o) => o.name)).toEqual(['expenses', 'friendPurchases'])
+    expect(ops[0].data.paymentMethod).toBe('MUFJ')
+  })
+
+  it('can still be turned off, deliberately', () => {
+    withLastPayment('MUFJ')
+    renderPage(<FriendPurchaseForm onClose={vi.fn()} />)
+    fill()
+    fireEvent.click(screen.getByRole('button', { name: 'Not tracked' }))
+    submit()
+
+    expect(batchOps.mock.calls[0][0].map((o) => o.name)).toEqual(['friendPurchases'])
+  })
+
+  // A yen card cannot fund a rupee purchase, and a stale selection must not
+  // survive the currency being switched.
+  it('drops a remembered card the currency cannot use', () => {
+    withLastPayment('Pasmo')
+    renderPage(<FriendPurchaseForm onClose={vi.fn()} />)
+    fill()
+    fireEvent.change(screen.getByLabelText(/Currency/i), { target: { value: 'IN' } })
+
+    expect(screen.getByText(/Nothing will be taken out of any account/i)).toBeInTheDocument()
+    submit()
+    expect(batchOps.mock.calls[0][0].map((o) => o.name)).toEqual(['friendPurchases'])
+  })
+
+  it('starts blank when nothing was ever used', () => {
+    renderPage(<FriendPurchaseForm onClose={vi.fn()} />)
+    expect(screen.getByText(/Nothing will be taken out of any account/i)).toBeInTheDocument()
+  })
+})
