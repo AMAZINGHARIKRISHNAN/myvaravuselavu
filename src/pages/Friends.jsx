@@ -17,7 +17,7 @@ import SwipeableRow from '../components/ui/SwipeableRow'
 
 // Settle + profit/loss rules live in lib/friendLedger so the Dashboard P/L
 // card computes with exactly the same math as this page.
-import { isSettled, cashPL } from '../lib/friendLedger'
+import { isSettled, cashPL, unfundedPurchases } from '../lib/friendLedger'
 
 // Where the money physically landed when a friend pays you back. It's your own
 // money returning, not income — so it moves a balance (a ➕ entry) and stays out
@@ -136,6 +136,10 @@ export default function Friends() {
   // The collect list: only friends who still owe money, biggest debt first —
   // this is the "who has to give me money and how much" view.
   const debtors = useMemo(() => friendStats.filter((f) => f.outstanding > 0), [friendStats])
+
+  // Rows where money was recorded as owed but nothing recorded it leaving.
+  // Reported, never touched: these are historical figures.
+  const unfunded = useMemo(() => unfundedPurchases(data), [data])
 
   const searchLower = search.trim().toLowerCase()
   const filteredList = data.filter((p) => {
@@ -326,6 +330,8 @@ export default function Friends() {
           <CsvImportButton mapRow={importMapRow} onImport={addMany} />
         </div>
       </div>
+
+      {unfunded.count > 0 && <UnfundedCard unfunded={unfunded} />}
 
       <div className="space-y-2">
         {loading && (
@@ -795,5 +801,69 @@ function GroupSettleSheet({ friend, items, update, onMoneyIn, onClose }) {
         </button>
       </div>
     </BottomSheet>
+  )
+}
+
+// The one-sided half of this ledger, shown where the rows are.
+//
+// When a friend pays you back the page writes an accountEntries credit and your
+// balance rises. Until now, lending wrote no matching debit — the form had no
+// "paid from" field — so collecting on one of these raises a balance from money
+// that was never taken out of it.
+//
+// Read-only on purpose. Every row here is a historical figure, and nothing gets
+// rewritten without being looked at first.
+function UnfundedCard({ unfunded }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="card border border-amber-500/30 bg-amber-500/5 p-4">
+      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+        ⚠️ {unfunded.count} purchase{unfunded.count === 1 ? '' : 's'} with no money movement
+        recorded
+      </p>
+      <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+        These say a friend owes you, but nothing records the money leaving an account. When they
+        pay you back, your balance rises by money that never went out.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-3">
+        {unfunded.totals.map((t) => (
+          <span key={t.country} className="text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+            {formatByCountry(t.amount, t.country)}
+            <span className="ml-1 text-xs font-normal text-gray-500 dark:text-gray-400">
+              across {t.count}
+            </span>
+          </span>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mt-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400"
+      >
+        {open ? 'Hide the list' : 'Show the list'}
+      </button>
+
+      {open && (
+        <ul className="mt-2 space-y-1.5">
+          {unfunded.rows.map((p) => (
+            <li key={p.id} className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="min-w-0 truncate text-gray-700 dark:text-gray-300">
+                {p.friend || 'Unknown'} · {p.item || 'Purchase'}
+                {toDate(p.date) ? ` · ${toDate(p.date).toLocaleDateString()}` : ''}
+              </span>
+              <span className="shrink-0 tabular-nums text-gray-900 dark:text-gray-100">
+                {formatByCountry(p.paid ?? p.cost ?? 0, p.country || 'JP')}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+        Nothing here has been changed. New purchases now ask where the money came from.
+      </p>
+    </div>
   )
 }

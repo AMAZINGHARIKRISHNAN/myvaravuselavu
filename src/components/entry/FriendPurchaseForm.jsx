@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useCollectionWriters } from '../../hooks/useCollectionWriters'
+import { useBatchOps } from '../../hooks/useBatchOps'
+import { useSettings } from '../../hooks/useSettings'
 import { useToast } from '../../context/ToastContext'
+import { categoryForMerchant } from '../../lib/stores'
 import { toDateInputValue, parseDateInput, formatByCountry } from '../../lib/format'
 import { celebrate } from '../../lib/celebrate'
 import BottomSheet from '../ui/BottomSheet'
@@ -11,7 +14,9 @@ import BottomSheet from '../ui/BottomSheet'
 //   due      — what the friend should give you back (blank = cost, no markup)
 //   received — what the friend has given you so far
 export default function FriendPurchaseForm({ onClose, initial, friendNames = [] }) {
-  const { add, update } = useCollectionWriters('friendPurchases')
+  const { update } = useCollectionWriters('friendPurchases')
+  const batchOps = useBatchOps()
+  const { settings } = useSettings()
   const { toast } = useToast()
   const [item, setItem] = useState(initial?.item ?? '')
   const [friend, setFriend] = useState(initial?.friend ?? '')
@@ -22,6 +27,13 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
   const [received, setReceived] = useState(initial?.received ?? '')
   const [date, setDate] = useState(toDateInputValue(initial?.date))
   const [note, setNote] = useState(initial?.note ?? '')
+  // WHERE THE MONEY CAME FROM. Without this the ledger was one-sided: a
+  // repayment credited an account, but nothing ever debited one when the money
+  // went out, so collecting raised a balance from money that never left.
+  // Blank is still allowed and still means "not tracked" — the same honest
+  // answer the repayment side offers — but it is now a choice rather than the
+  // only possibility.
+  const [paidFrom, setPaidFrom] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -31,6 +43,16 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
   // your pocket (paid, which defaults to the full cost when blank).
   const paidNum = paid === '' ? costNum : parseFloat(paid) || 0
   const markup = dueNum - paidNum
+
+  // Only the accounts that hold this currency, plus cash — the same list the
+  // repayment side offers, for the same reason: funding a yen purchase from an
+  // Indian account would invent money out of the exchange rate.
+  const sourceOptions = [
+    ...(settings?.accounts || [])
+      .filter((a) => (a.country || 'JP') === country)
+      .map((a) => a.label),
+    'Cash',
+  ]
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -59,8 +81,36 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
       }
       if (initial?.id) {
         await update(initial.id, payload)
+      } else if (paidFrom) {
+        // ONE commit for both. The expense is what takes the money out of the
+        // account; the friend row is what says it is coming back. Writing them
+        // separately would leave a debt with no payment behind it — exactly
+        // the state this field exists to stop creating.
+        await batchOps([
+          {
+            op: 'set',
+            name: 'expenses',
+            data: {
+              amount: payload.paid,
+              category: categoryForMerchant(payload.item) || 'Other',
+              country: payload.country,
+              paymentMethod: paidFrom,
+              store: '',
+              note: `For ${payload.friend}${payload.item ? ` · ${payload.item}` : ''}`,
+              date: payload.date,
+              fromPlace: '',
+              toPlace: '',
+            },
+          },
+          {
+            op: 'set',
+            name: 'friendPurchases',
+            data: (ids) => ({ ...payload, expenseId: ids[0] }),
+          },
+        ])
+        celebrate()
       } else {
-        await add(payload)
+        await batchOps([{ op: 'set', name: 'friendPurchases', data: payload }])
         celebrate()
       }
       toast(`✓ ${item.trim()} for ${friend.trim()} saved`)
@@ -160,6 +210,35 @@ export default function FriendPurchaseForm({ onClose, initial, friendNames = [] 
           <input value={note} onChange={(e) => setNote(e.target.value)} className="input" />
         </Field>
       </div>
+
+      {/* The other half of the ledger. A repayment already says where the money
+          landed; this says where it came from, so the two sides can cancel. */}
+      {!initial?.id && (
+        <div className="space-y-1.5">
+          <p className="text-xs text-gray-500 dark:text-gray-400">Where did the money come from?</p>
+          <div className="flex flex-wrap gap-2">
+            {[...sourceOptions, ''].map((label) => (
+              <button
+                key={label || 'none'}
+                type="button"
+                onClick={() => setPaidFrom(label)}
+                className={`min-h-9 rounded-full px-3.5 text-xs font-semibold transition-all active:scale-95 touch-manipulation ${
+                  paidFrom === label
+                    ? 'bg-indigo-600 text-white dark:bg-indigo-500'
+                    : 'border border-gray-200 bg-gray-100/80 text-gray-700 dark:border-transparent dark:bg-neutral-800/50 dark:text-gray-300'
+                }`}
+              >
+                {label || 'Not tracked'}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            {paidFrom
+              ? `Logs ${formatByCountry(paidNum, country)} out of ${paidFrom} as well, so collecting it back cancels out.`
+              : 'Nothing will be taken out of any account — only the debt is recorded.'}
+          </p>
+        </div>
+      )}
 
       {costNum > 0 && markup !== 0 && (
         <p

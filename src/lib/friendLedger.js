@@ -38,3 +38,44 @@ export function computePLBuckets(items) {
   b.lossPct = b.lossBase > 0 ? b.loss / b.lossBase : 0
   return b
 }
+
+// ---- Money that went out and was never recorded leaving ----------------------
+//
+// The friend ledger is one-sided, and this finds where.
+//
+// When a friend pays you back, the Friends page writes an accountEntries credit
+// and your balance rises. When you lend or buy on their behalf, the same page
+// writes only the friend row — it never had a "paid from" field, so nothing
+// recorded the money leaving. Collect on one of those and your balance goes UP
+// from money that never went DOWN.
+//
+// A row created from the entry sheet is fine: that path writes the expense and
+// the friend row together and links them with expenseId. Its absence is the
+// marker, and it is the only one used here — deliberately, so this costs no
+// extra read. A row whose linked expense was later deleted is not detected;
+// that is a narrower hole than the one being reported and it needs the whole
+// expense collection to see.
+export const isUnfunded = (p) => !p?.expenseId && (p?.paid ?? p?.cost ?? 0) > 0
+
+// Every such row, with what they add up to per currency. Read-only: this
+// reports, and changes nothing.
+export function unfundedPurchases(purchases = []) {
+  const rows = purchases.filter(isUnfunded)
+  const byCountry = new Map()
+
+  for (const p of rows) {
+    const country = p.country || 'JP'
+    const entry = byCountry.get(country) || { country, amount: 0, count: 0 }
+    entry.amount += p.paid ?? p.cost ?? 0
+    entry.count += 1
+    byCountry.set(country, entry)
+  }
+
+  return {
+    rows: rows
+      .slice()
+      .sort((a, b) => (b.paid ?? b.cost ?? 0) - (a.paid ?? a.cost ?? 0)),
+    totals: [...byCountry.values()].sort((a, b) => b.amount - a.amount),
+    count: rows.length,
+  }
+}
