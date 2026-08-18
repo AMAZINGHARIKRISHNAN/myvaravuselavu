@@ -8,7 +8,7 @@ import { buildActivityFeed } from '../lib/activity'
 import { useCollectionWriters } from '../hooks/useCollectionWriters'
 import { useUndoableDelete } from '../hooks/useUndoableDelete'
 import { CATEGORIES, CATEGORY_ICONS, COUNTRIES } from '../lib/constants'
-import { formatJPY, formatINR, formatByCountry, toDateInputValue, parseDateInput } from '../lib/format'
+import { formatJPY, formatINR, formatByCountry, toDate, toDateInputValue, parseDateInput } from '../lib/format'
 import { downloadCsv, expenseFromCsvRow, formatDateForCsv, parseCsvDate } from '../lib/csv'
 import { normalizeStore, rankStores, storeKey } from '../lib/stores'
 import { hasRoute, routeLabel } from '../lib/route'
@@ -21,7 +21,11 @@ import CsvImportButton from '../components/ui/CsvImportButton'
 import FloatingActionButton from '../components/ui/FloatingActionButton'
 import SwipeableRow from '../components/ui/SwipeableRow'
 import { countryOf } from '../lib/money'
+import { useToast } from '../context/ToastContext'
+import BottomSheet from '../components/ui/BottomSheet'
 import { capGroups, ROW_LIMIT } from '../lib/listWindow'
+import { alreadyTagged, selectedRecords, selectionSummary, tagTripOps } from '../lib/tripTagging'
+import { useBatchOps } from '../hooks/useBatchOps'
 
 const EMPTY = ''
 
@@ -73,6 +77,15 @@ export default function History() {
   // The "All activity" tab pulls from every collection. They only subscribe
   // while that tab is open, so the other two tabs cost nothing extra.
   const allEnabled = tab === 'all'
+  // Picking rows to put on a trip. The trips themselves are only fetched once
+  // picking starts — browsing history should not cost a read for a list nobody
+  // has asked to see.
+  const [selecting, setSelecting] = useState(false)
+  const [picked, setPicked] = useState(() => new Set())
+  const [choosingTrip, setChoosingTrip] = useState(false)
+  const trips = useCollection('trips', { enabled: selecting })
+  const batchOps = useBatchOps()
+  const { toast } = useToast()
   const transfers = useCollection('transfers', { dateRange, enabled: allEnabled })
   const recharges = useCollection('pasmoRecharges', { dateRange, enabled: allEnabled })
   const withdrawals = useCollection('withdrawals', { dateRange, enabled: allEnabled })
@@ -135,6 +148,47 @@ export default function History() {
       ? names
       : [store, ...names]
   }, [expenses.data, store])
+
+  const togglePick = useCallback((id) => {
+    setPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const stopSelecting = () => {
+    setSelecting(false)
+    setPicked(new Set())
+    setChoosingTrip(false)
+  }
+
+  // ONE commit for the whole selection. Half a trip tagged is a total that is
+  // wrong in a way nobody can see.
+  const addToTrip = async (trip) => {
+    const ops = tagTripOps([...picked], trip?.id ?? null)
+    if (ops.length === 0) return
+    try {
+      await batchOps(ops)
+      toast(
+        trip
+          ? `✓ ${ops.length} added to 🧳 ${trip.name}`
+          : `✓ ${ops.length} taken off their trip`
+      )
+      stopSelecting()
+    } catch {
+      toast('⚠️ Could not save that — check your connection and try again')
+    }
+  }
+
+  // What is picked, and whether adding it moves anything off another trip.
+  const pickedRecords = useMemo(
+    () => selectedRecords(expenses.data, picked),
+    [expenses.data, picked]
+  )
+  const pickedSummary = useMemo(() => selectionSummary(pickedRecords), [pickedRecords])
+  const moving = useMemo(() => alreadyTagged(pickedRecords), [pickedRecords])
 
   const searchLower = search.trim().toLowerCase()
 
@@ -379,6 +433,22 @@ export default function History() {
         </TabButton>
       </div>
 
+      {/* Grouping spending after the fact. Until now an expense could only take
+          a trip at the moment it was created, and only if one happened to be
+          running — so anything logged before the trip existed could never be
+          put on it. */}
+      {tab === 'expenses' && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
+            className="min-h-9 rounded-full border border-gray-300/60 bg-gray-100 px-3 text-xs font-semibold text-gray-700 active:scale-95 dark:border-transparent dark:bg-neutral-800 dark:text-gray-200"
+          >
+            {selecting ? 'Cancel' : '🧳 Select to group'}
+          </button>
+        </div>
+      )}
+
       <div className="relative">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
           <Search size={15} aria-hidden="true" />
@@ -595,6 +665,9 @@ export default function History() {
                 tab={tab}
                 onEdit={openEditor}
                 onDelete={requestDelete}
+                selecting={selecting}
+                picked={picked.has(record.id)}
+                onPick={togglePick}
               />
             ))}
           </div>
@@ -610,6 +683,98 @@ export default function History() {
           {hiddenRows === 1 ? ' record is' : ' records are'} not drawn. Narrow the date range, or
           export to CSV for the lot.
         </p>
+      )}
+
+      {/* What is picked, and what it comes to. Sits above the tab bar rather
+          than in a sheet: the numbers have to stay visible while more rows are
+          being tapped. */}
+      {selecting && (
+        <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-30 px-4">
+          <div className="mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-indigo-500/30 bg-white/95 p-3 shadow-lg backdrop-blur dark:bg-neutral-900/95">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {pickedSummary.count === 0
+                  ? 'Tap the rows to group'
+                  : `${pickedSummary.count} selected`}
+              </p>
+              {pickedSummary.count > 0 && (
+                <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                  {[
+                    pickedSummary.totals.JP > 0 && formatJPY(pickedSummary.totals.JP),
+                    pickedSummary.totals.IN > 0 && formatINR(pickedSummary.totals.IN),
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={pickedSummary.count === 0}
+              onClick={() => setChoosingTrip(true)}
+              className="btn-primary shrink-0 px-4 py-2 text-xs disabled:opacity-40"
+            >
+              Add to trip →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {choosingTrip && (
+        <BottomSheet onClose={() => setChoosingTrip(false)} title="Which trip?">
+          {/* Said before it happens: re-tagging takes spending off another trip
+              and out of ITS total, which is a number changing somewhere the
+              person is not looking. */}
+          {moving.count > 0 && (
+            <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+              {moving.count} of these {moving.count === 1 ? 'is' : 'are'} already on another trip.
+              Adding {moving.count === 1 ? 'it' : 'them'} here takes {moving.count === 1 ? 'it' : 'them'}
+              {' '}off that one, and its total drops.
+            </p>
+          )}
+
+          {trips.loading && <Skeleton className="h-16 w-full" />}
+
+          {!trips.loading && trips.data.length === 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              No trips yet — make one on the Trips tab, then come back and group these onto it.
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {trips.data.map((trip) => (
+              <button
+                key={trip.id}
+                type="button"
+                onClick={() => addToTrip(trip)}
+                className="card flex w-full items-center justify-between gap-3 p-3 text-left active:scale-[0.99] touch-manipulation"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    🧳 {trip.name}
+                  </span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    {toDate(trip.startDate)?.toLocaleDateString()}
+                    {trip.endDate && ` → ${toDate(trip.endDate).toLocaleDateString()}`}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                  Add
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* The way back out. Tagging is reversible in one tap, which is what
+              makes it safe to try. */}
+          <button
+            type="button"
+            onClick={() => addToTrip(null)}
+            className="w-full rounded-xl border border-gray-300/60 py-2.5 text-xs font-semibold text-gray-600 active:scale-[0.99] dark:border-white/10 dark:text-gray-300"
+          >
+            Take these off their trip
+          </button>
+        </BottomSheet>
       )}
 
       {/* The all-activity tab gets the button too: the entry sheet covers
@@ -647,15 +812,34 @@ export default function History() {
 // when that record actually changes. Without this, a page holding hundreds of
 // rows redrew all of them whenever anything on the screen moved — a keystroke
 // in the search box, or a toast fired by an unrelated save.
-const LedgerRow = memo(function LedgerRow({ record, tab, onEdit, onDelete }) {
+const LedgerRow = memo(function LedgerRow({ record, tab, onEdit, onDelete, selecting, picked, onPick }) {
   const isExpenses = tab === 'expenses'
   const kind = isExpenses ? 'expense' : 'income'
-  return (
-    <SwipeableRow onEdit={() => onEdit(record, kind)} onDelete={() => onDelete(record.id)}>
+
+  // While picking, the whole row is the checkbox and swiping is off — a swipe
+  // that deletes and a tap that selects are too close together to share a row.
+  const card = (
       <div
         data-tone={isExpenses ? 'out' : 'in'}
-        className="card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out]"
+        onClick={selecting ? () => onPick(record.id) : undefined}
+        className={`card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out] ${
+          selecting ? 'cursor-pointer' : ''
+        } ${picked ? 'ring-2 ring-indigo-500' : ''}`}
       >
+        {selecting && (
+          <input
+            type="checkbox"
+            checked={picked}
+            readOnly
+            aria-label={`Select ${formatByCountry(record.amount, countryOf(record))} ${record.category || ''}`}
+            className="h-5 w-5 shrink-0 accent-indigo-600"
+          />
+        )}
+        {record.tripId && (
+          <span className="shrink-0 text-xs" title="Already on a trip" aria-label="Already on a trip">
+            🧳
+          </span>
+        )}
         {isExpenses ? (
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-base dark:bg-neutral-800">
             {CATEGORY_ICONS[record.category] || '📌'}
@@ -681,7 +865,7 @@ const LedgerRow = memo(function LedgerRow({ record, tab, onEdit, onDelete }) {
             {record.note && ` · ${record.note}`}
           </p>
         </div>
-        <div className="flex shrink-0 gap-0.5">
+        <div className={`shrink-0 gap-0.5 ${selecting ? 'hidden' : 'flex'}`}>
           <button
             type="button"
             onClick={() => onEdit(record, kind)}
@@ -700,6 +884,12 @@ const LedgerRow = memo(function LedgerRow({ record, tab, onEdit, onDelete }) {
           </button>
         </div>
       </div>
+  )
+
+  if (selecting) return card
+  return (
+    <SwipeableRow onEdit={() => onEdit(record, kind)} onDelete={() => onDelete(record.id)}>
+      {card}
     </SwipeableRow>
   )
 })
