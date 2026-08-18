@@ -14,7 +14,7 @@ import EntryFlow from './EntryFlow'
 // `history` is whatever expenses the page already holds — passed in rather
 // than fetched, because a quick-add box must not cost a read to open. It is
 // what lets this ask about a shop once instead of every time.
-export default function QuickAdd({ onSaved, history = [] }) {
+export default function QuickAdd({ onSaved, history = [], friends = [] }) {
   const { settings } = useSettings()
   // Held steady across renders: `settings?.accounts || []` is a fresh array
   // every time, which would rebuild the vocabulary on every keystroke.
@@ -50,7 +50,7 @@ export default function QuickAdd({ onSaved, history = [] }) {
     // What the words did not settle is asked here rather than filled in
     // silently downstream. Nothing outstanding — which is most lines once a
     // shop is known — goes straight to the confirm step as before.
-    const draft = shorthandDraft(parsed, vocab, { history })
+    const draft = shorthandDraft(parsed, vocab, { history, friends })
     if (draft.ready) setPrefill(draft.record)
     else setAsking(draft)
   }
@@ -58,7 +58,7 @@ export default function QuickAdd({ onSaved, history = [] }) {
   // One answer, then whatever it leaves. The card being chosen settles the
   // currency with it, so a two-question draft usually ends after one tap.
   const answer = (field, value) => {
-    const next = answerShorthand(asking.record, field, value, vocab, { history })
+    const next = answerShorthand(asking.record, field, value, vocab, { history, friends })
     if (next.ready) {
       setAsking(null)
       setPrefill(next.record)

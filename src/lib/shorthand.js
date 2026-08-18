@@ -22,7 +22,9 @@ const ASKABLE = ['paymentMethod', 'country']
 const askFor = (field, record) =>
   field === 'category'
     ? `What kind of spend ${record.store ? `is ${record.store}` : 'was that'}?`
-    : questionFor(field, record)
+    : field === 'lentTo'
+      ? 'Who did you lend it to?'
+      : questionFor(field, record)
 
 // The answers to offer, likeliest first.
 //
@@ -46,7 +48,7 @@ function optionsFor(field, record, vocab, history) {
 //
 // The record keeps fromPlace/toPlace, which validateRecord does not carry —
 // a journey typed as shorthand must not lose its two ends on the way through.
-export function shorthandDraft(parsed, vocab, { history = [] } = {}) {
+export function shorthandDraft(parsed, vocab, { history = [], friends = [] } = {}) {
   const { record, missing } = validateRecord({ kind: 'expense', ...parsed }, vocab)
 
   const draft = {
@@ -71,9 +73,22 @@ export function shorthandDraft(parsed, vocab, { history = [] } = {}) {
     // Carried ON the record, so a draft rebuilt from it later does not re-ask
     // something already answered. Anything but 'Other' is decided by being it.
     categoryKnown: record.category !== 'Other' || Boolean(parsed?.categoryKnown),
+    // Money that is coming back. validateRecord knows nothing about either —
+    // an expense is still written, and the friend ledger row alongside it is
+    // what records that it is owed.
+    isLoan: Boolean(parsed?.isLoan || parsed?.lentTo),
+    lentTo: parsed?.lentTo || '',
   }
 
   const questions = []
+
+  // Asked before anything else, and ahead of the money fields on purpose. It
+  // is the answer that decides whether this reaches the friend ledger at all —
+  // skip it and a loan is just spending again, which is the whole defect.
+  if (draft.isLoan && !draft.lentTo) {
+    questions.push({ field: 'lentTo', ask: askFor('lentTo', draft), options: friends })
+  }
+
   for (const field of missing) {
     if (!ASKABLE.includes(field)) continue
     // Answered above, from the shop's habit or your own.
@@ -84,7 +99,10 @@ export function shorthandDraft(parsed, vocab, { history = [] } = {}) {
   // 'Other' is this app's word for "no idea", and a shop it has never seen is
   // exactly when it should ask rather than file it there for ever. Asked last:
   // the card decides money, the category only decides which chart.
-  if (!draft.categoryKnown) {
+  //
+  // Never for a loan: lending somebody 5,000 is not a kind of spending, and
+  // asking which chart it belongs on is a question with no right answer.
+  if (!draft.categoryKnown && !draft.isLoan) {
     questions.push({
       field: 'category',
       ask: askFor('category', draft),
@@ -100,11 +118,13 @@ export function shorthandDraft(parsed, vocab, { history = [] } = {}) {
 // Re-derived from scratch rather than patched, so answering the card settles
 // the currency question along with it — the same reason StoryDraft re-validates
 // instead of clearing one question at a time.
-export function answerShorthand(record, field, value, vocab, { history = [] } = {}) {
+export function answerShorthand(record, field, value, vocab, { history = [], friends = [] } = {}) {
   const next =
     field === 'category'
       ? { ...record, category: CATEGORIES.includes(value) ? value : record.category }
-      : applyAnswer(record, field, value, vocab)
+      : field === 'lentTo'
+        ? { ...record, lentTo: String(value || '').trim() }
+        : applyAnswer(record, field, value, vocab)
 
   return shorthandDraft(
     {
@@ -114,6 +134,6 @@ export function answerShorthand(record, field, value, vocab, { history = [] } = 
       categoryKnown: field === 'category' || record.categoryKnown,
     },
     vocab,
-    { history }
+    { history, friends }
   )
 }

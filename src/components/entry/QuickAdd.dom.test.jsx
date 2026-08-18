@@ -202,3 +202,48 @@ describe('what you have already logged answers for you', () => {
     expect(chips.slice(0, 4).join(' ')).toMatch(/Edenred|MUFJ/)
   })
 })
+
+// ---- Money lent -------------------------------------------------------------
+// Lending was logged as ordinary spending: the amount left the ledger and
+// nothing recorded that anybody owed it back. The Friend ledger existed all
+// along; the typed path had no way to reach it.
+describe('lending reaches the friend ledger', () => {
+  it('opens the entry sheet already set to "fully for a friend"', () => {
+    renderPage(<QuickAdd />)
+    type('lent 5000 to kenji cash')
+    // Cash still cannot say which currency on an empty ledger.
+    answerQuestion('🇯🇵 Yen')
+
+    expect(sheet()).toContain('5,000')
+    // The friend row is filled in and the mode is set, so one tap saves both
+    // the expense and the row that says Kenji owes it back.
+    expect(screen.getByDisplayValue('Kenji')).toBeInTheDocument()
+    expect(sheet()).toMatch(/Friend/i)
+  })
+
+  it('asks who, offering the friends already in the ledger', () => {
+    renderPage(<QuickAdd friends={['Kenji', 'Arun']} />)
+    type('lent 5000 cash')
+
+    expect(sheet()).toMatch(/Who did you lend it to/i)
+    expect(screen.getByRole('button', { name: 'Kenji' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Arun' })).toBeInTheDocument()
+  })
+
+  it('carries the answered name into the sheet', () => {
+    renderPage(<QuickAdd friends={['Kenji']} />)
+    type('lent 5000 cash')
+    answerQuestion('Kenji')
+    answerQuestion('🇯🇵 Yen')
+
+    expect(screen.getByDisplayValue('Kenji')).toBeInTheDocument()
+  })
+
+  // It is still money out of an account, so the card question stands.
+  it('never asks a loan which category it is', () => {
+    renderPage(<QuickAdd />)
+    type('lent 5000 to kenji')
+    expect(sheet()).toMatch(/Which card or account/i)
+    expect(sheet()).not.toMatch(/What kind of spend/i)
+  })
+})

@@ -246,3 +246,38 @@ describe('a log draft asks rather than assuming', () => {
     expect(answer.payload).toMatchObject({ amount: 938, store: 'Lawson', kind: 'expense' })
   })
 })
+
+// Lending is not spending. It used to be logged as an ordinary expense with the
+// friend's name stuck in the note, so nothing recorded that it was owed back.
+describe('lending, at the assistant', () => {
+  const ctx = {
+    settings: { accounts: [{ label: 'MUFJ', country: 'JP' }] },
+    friendPurchases: [{ friend: 'Kenji' }, { friend: 'Arun' }, { friend: 'Kenji' }],
+  }
+
+  it('says who owes it, not what was bought', () => {
+    const answer = askJarvis('lent 5000 to kenji cash', ctx)
+    expect(answer.intent).toBe('log')
+    expect(answer.payload).toMatchObject({ amount: 5000, lentTo: 'Kenji', isLoan: true })
+    expect(answer.lines).toContain('🤝 Kenji owes you')
+  })
+
+  it('asks who first when the line did not say, offering the ledger names', () => {
+    const answer = askJarvis('lent 5000 cash', ctx)
+    expect(answer.questions[0].field).toBe('lentTo')
+    expect(answer.questions[0].options).toEqual(['Arun', 'Kenji'])
+    expect(answer.speech).toMatch(/who did you lend it to/i)
+  })
+
+  it('confirms it as a loan once answered', () => {
+    const first = askJarvis('lent 5000 to kenji edenred', ctx)
+    expect(first.questions).toEqual([])
+    expect(first.speech).toMatch(/Logging 5,000 yen lent to Kenji\. Confirm\?/)
+  })
+
+  it('leaves an ordinary expense speaking as one', () => {
+    // A shop it recognises, so nothing is outstanding to ask about.
+    expect(askJarvis('938 lawson edenred', ctx).speech).toMatch(/for food\. Confirm\?/i)
+    expect(askJarvis('938 lawson edenred', ctx).payload.isLoan).toBe(false)
+  })
+})

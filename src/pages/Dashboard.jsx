@@ -105,6 +105,13 @@ export default function Dashboard() {
   // and Profit pages, so the tile adds no extra reads.
   const profitFriends = useCollection('friendPurchases')
   const profitClaims = useCollection('commuteClaims')
+  // Names already in the friend ledger, so "lent 5000" can offer them as a tap
+  // instead of asking you to spell one you have typed a dozen times.
+  const knownFriends = useMemo(
+    () => Array.from(new Set(profitFriends.data.map((f) => f.friend).filter(Boolean))).sort(),
+    [profitFriends.data]
+  )
+
   const profitOrders = useCollection('onlineOrders')
   const profitPasses = useCollection('commutePasses')
   const profitTrips = useCollection('commuteTrips')
@@ -479,7 +486,7 @@ export default function Dashboard() {
         <div className="space-y-3">
           {/* Two months of records, already loaded for the cards above. Enough
               for it to know your usual shops without costing a single read. */}
-          <QuickAdd history={quickAddHistory} />
+          <QuickAdd history={quickAddHistory} friends={knownFriends} />
           <QuickRepeat recentExpenses={[...expenses.data, ...prevExpenses.data]} />
         </div>
       )}

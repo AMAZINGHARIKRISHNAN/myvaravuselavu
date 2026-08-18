@@ -53,6 +53,17 @@ const STOPWORDS = new Set([
   'is', 'today', 'yesterday', 'morning', 'afternoon', 'evening', 'night',
 ])
 
+// Money that is coming back.
+//
+// A loan is not a purchase, and filing it as one is how it disappears: the
+// amount left your pocket, so it looked exactly like spending, and nothing
+// recorded that anybody owed it back. Saying any of these turns the name the
+// sentence carries into the person rather than the shop.
+//
+// Deliberately explicit. "gave" is not here — a gift is not a loan, and the
+// difference is not something to infer from a verb that means both.
+const LEND_WORDS = new Set(['lent', 'lend', 'lending', 'loaned', 'loan', 'spotted'])
+
 // Words that appear in half the account labels ever written and therefore
 // identify none of them — "card" must not resolve to "SBI Card".
 const GENERIC_ACCOUNT_WORDS = new Set([
@@ -408,8 +419,12 @@ export function parseExpenseText(text, { accounts = [], known = [], now = new Da
       /^\d+(?:\.\d+)?$/.test(token.word) || // a stray figure — a date, a quantity
       NOISE_WORDS.includes(token.word) ||
       STOPWORDS.has(token.word) ||
+      LEND_WORDS.has(token.word) ||
       claimed.has(token.word)
   }
+
+  // "lent 5000 to kenji" — the name in this sentence is a person, not a shop.
+  const lending = tokens.some((token) => LEND_WORDS.has(token.word))
 
   // A journey keeps its places instead of a shop name; everything else keeps
   // the shop. Both fields exist on the record either way, so nothing that reads
@@ -464,6 +479,11 @@ export function parseExpenseText(text, { accounts = [], known = [], now = new Da
   // outranks a habit, because it is what you meant this time.
   const category = keywordCategory || learned?.category || categoryForMerchant(store)
 
+  // The same run of words either way — what changes is who it names. A loan
+  // has no shop, so nothing is lost by moving it, and the friend ledger has
+  // somewhere to put it.
+  const lentTo = lending ? store : ''
+
   return {
     amount,
     // Null when the line said nothing about when — the entry sheet fills in
@@ -485,7 +505,12 @@ export function parseExpenseText(text, { accounts = [], known = [], now = new Da
     // then does the shop's own history get a say — and only ever as the last
     // word, never over a method that already settled it.
     country: sourceCountry(paymentMethod, accounts) || learned?.country || null,
-    store: normalizeStore(store),
+    store: lending ? '' : normalizeStore(store),
+    // Who owes it back, and whether the line said it was a loan at all. Both,
+    // because "lent 5000" with no name is a loan whose lender is still a
+    // question — and a blank name alone cannot say that.
+    lentTo: normalizeStore(lentTo),
+    isLoan: lending,
     fromPlace,
     toPlace,
     note,

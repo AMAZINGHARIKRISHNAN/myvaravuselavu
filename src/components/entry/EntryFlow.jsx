@@ -150,7 +150,12 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
   //              where it splits equally between the group's members
   // All but 'mine' create linked records alongside the expense. Only offered
   // for new expenses so edits can't duplicate ledger rows.
-  const [whoFor, setWhoFor] = useState('mine')
+  // A loan arrives already knowing it is one. Opening in 'friend' mode is what
+  // puts the row in the Friend ledger: with a single friend and equal shares,
+  // their share is the whole amount, which is exactly what being owed it means.
+  const [whoFor, setWhoFor] = useState(
+    (initial?.lentTo || initial?.isLoan) && !initial?.id ? 'friend' : 'mine'
+  )
   const forFriend = whoFor === 'split' || whoFor === 'friend'
   const [groupId, setGroupId] = useState(null)
   const selectedGroup = groups.find((g) => g.id === (groupId ?? groups[0]?.id))
@@ -162,7 +167,12 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
   //               plus an optional different "pays you" amount for markup
   const [splitMode, setSplitMode] = useState('equal')
   // One row per friend. pct is used in percent mode; part/pays in custom mode.
-  const [friends, setFriends] = useState([{ name: '', pct: '', part: '', pays: '' }])
+  const [friends, setFriends] = useState([
+    { name: initial?.lentTo || '', pct: '', part: '', pays: '' },
+  ])
+
+  // Money handed over rather than spent. Only ever set by a draft that said so.
+  const isLoan = Boolean(initial?.lentTo || initial?.isLoan) && !initial?.id
 
   const amountNum = parseFloat(amount) || 0
 
@@ -627,7 +637,10 @@ export default function EntryFlow({ initial, initialDate, onMoveMoney, onClose, 
         // cost = their slice of this expense; paid = same (that money already
         // left your pocket as this expense).
         const friendRow = (f, expenseId) => ({
-          item: note.trim() || payload.store || category || 'Expense',
+          // A loan has no shop and usually no note, so without this it would be
+          // filed in the Friend ledger under its category — a row called
+          // "Other" that says nothing about what the money was.
+          item: note.trim() || payload.store || (isLoan ? 'Money lent' : category) || 'Expense',
           store: payload.store,
           friend: f.name.trim(),
           country: payload.country,

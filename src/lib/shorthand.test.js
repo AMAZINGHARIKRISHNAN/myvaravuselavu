@@ -210,3 +210,66 @@ describe('the ledger answers what it can, so the flow does not stop', () => {
     expect(q.options).toEqual(VOCAB.paymentMethods)
   })
 })
+
+// ---- Money that is coming back ----------------------------------------------
+// Lending was logged as ordinary spending: the amount left the ledger and
+// nothing recorded that anybody owed it. The Friend ledger existed the whole
+// time — the typed path simply had no way to reach it.
+describe('lending is not spending', () => {
+  const draft = (text, opts) =>
+    shorthandDraft(parseExpenseText(text, { accounts: ACCOUNTS }), VOCAB, opts)
+
+  it('reads who it went to, and keeps it off the shop', () => {
+    expect(draft('lent 5000 to kenji cash').record).toMatchObject({
+      amount: 5000,
+      lentTo: 'Kenji',
+      isLoan: true,
+      store: null, // validateRecord's own empty — a loan has no shop
+    })
+  })
+
+  it('reads it without the preposition too', () => {
+    expect(draft('lend 3000 kenji cash').record.lentTo).toBe('Kenji')
+    expect(draft('2000 loan to arun cash').record.lentTo).toBe('Arun')
+  })
+
+  it('asks who when the line did not say', () => {
+    const d = draft('lent 5000 cash')
+    expect(fields(d)).toContain('lentTo')
+    expect(d.questions.find((q) => q.field === 'lentTo').ask).toMatch(/who did you lend it to/i)
+  })
+
+  it('offers the friends already in the ledger', () => {
+    const d = draft('lent 5000 cash', { friends: ['Kenji', 'Arun'] })
+    expect(d.questions.find((q) => q.field === 'lentTo').options).toEqual(['Kenji', 'Arun'])
+  })
+
+  it('takes the name as an answer', () => {
+    const first = draft('lent 5000 cash')
+    const next = answerShorthand(first.record, 'lentTo', 'Kenji', VOCAB)
+    expect(next.record.lentTo).toBe('Kenji')
+    expect(fields(next)).not.toContain('lentTo')
+  })
+
+  // A loan is not a kind of spending, so there is no right answer to give.
+  it('never asks which category a loan belongs to', () => {
+    expect(fields(draft('lent 5000 to kenji cash'))).not.toContain('category')
+  })
+
+  // The money still left an account, and that still decides the currency.
+  it('still asks which card it came out of', () => {
+    expect(fields(draft('lent 5000 to kenji'))).toContain('paymentMethod')
+    expect(draft('lent 5000 to kenji icici').record.country).toBe('IN')
+  })
+
+  it('leaves an ordinary expense entirely alone', () => {
+    const d = draft('499 cosmos cash')
+    expect(d.record.isLoan).toBe(false)
+    expect(d.record.lentTo).toBe('')
+  })
+
+  // A gift is not a loan, and the difference cannot be read off "gave".
+  it('does not treat giving as lending', () => {
+    expect(draft('gave 3000 to kenji cash').record.isLoan).toBe(false)
+  })
+})

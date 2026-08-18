@@ -64,6 +64,10 @@ const parseOptions = (ctx) => ({
 // to the month it always has.
 const historyOf = (ctx) => ctx?.history || ctx?.expenses || []
 
+// Everyone already in the friend ledger.
+const friendsOf = (ctx) =>
+  Array.from(new Set((ctx?.friendPurchases || []).map((f) => f?.friend).filter(Boolean))).sort()
+
 const vocabOf = (ctx) => {
   const accounts = ctx?.settings?.accounts || []
   return { ...vocabulary({ accounts, trips: [] }), accountList: accounts }
@@ -80,7 +84,10 @@ function logDraft(parsed, ctx) {
   // becomes a question the sheet can put, instead of a gap something fills in
   // downstream without saying so.
   const vocab = vocabOf(ctx)
-  const { record, questions } = shorthandDraft(parsed, vocab, { history: historyOf(ctx) })
+  const { record, questions } = shorthandDraft(parsed, vocab, {
+    history: historyOf(ctx),
+    friends: friendsOf(ctx),
+  })
   const rupees = record.country === 'IN'
   return {
     intent: 'log',
@@ -88,10 +95,14 @@ function logDraft(parsed, ctx) {
     questions,
     vocab,
     speech: questions.length
-      ? `${rupees ? sayRupees(record.amount) : sayYen(record.amount)}${record.store ? ` at ${record.store}` : ''}. ${questions[0].ask}`
-      : `Logging ${rupees ? sayRupees(record.amount) : sayYen(record.amount)} for ${record.category?.toLowerCase() || 'other'}. Confirm?`,
+      ? `${rupees ? sayRupees(record.amount) : sayYen(record.amount)}${record.store ? ` at ${record.store}` : ''}${record.lentTo ? ` lent to ${record.lentTo}` : ''}. ${questions[0].ask}`
+      : record.lentTo
+        ? `Logging ${rupees ? sayRupees(record.amount) : sayYen(record.amount)} lent to ${record.lentTo}. Confirm?`
+        : `Logging ${rupees ? sayRupees(record.amount) : sayYen(record.amount)} for ${record.category?.toLowerCase() || 'other'}. Confirm?`,
     lines: [
-      `${record.category || 'Other'}${record.store ? ` · ${record.store}` : ''}`,
+      record.lentTo
+        ? `🤝 ${record.lentTo} owes you`
+        : `${record.category || 'Other'}${record.store ? ` · ${record.store}` : ''}`,
       `${rupees ? '₹' : '¥'}${(record.amount || 0).toLocaleString()}`,
       // A journey identifies itself by its route, not by a shop.
       routeLabel(record.fromPlace, record.toPlace) || null,
@@ -107,6 +118,7 @@ function logDraft(parsed, ctx) {
 export function answerLogDraft(record, field, value, ctx) {
   const { record: next } = answerShorthand(record, field, value, vocabOf(ctx), {
     history: historyOf(ctx),
+    friends: friendsOf(ctx),
   })
   return logDraft(next, ctx)
 }

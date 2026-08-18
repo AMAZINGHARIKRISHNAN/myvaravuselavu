@@ -55,22 +55,36 @@ export default function AnswerChips({ field, vocab, options, onAnswer }) {
     )
   }
 
+  // Typed, but with a shortcut for the answers already given before. A friend's
+  // name is not a fixed list the way a card is — it can always be someone new —
+  // so the box stays and the taps sit above it.
   return (
-    <div className="mt-2 flex gap-1.5">
-      <input
-        value={typed}
-        onChange={(e) => setTyped(e.target.value)}
-        type={field === 'amount' ? 'number' : field === 'date' ? 'date' : 'text'}
-        inputMode={field === 'amount' ? 'decimal' : undefined}
-        className="input flex-1"
-      />
-      <button
-        type="button"
-        onClick={() => typed.trim() && onAnswer(typed.trim())}
-        className="rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white dark:bg-indigo-500"
-      >
-        OK
-      </button>
+    <div className="mt-2 space-y-1.5">
+      {options?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((option) => (
+            <Chip key={option} onClick={() => onAnswer(option)}>
+              {option}
+            </Chip>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <input
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          type={field === 'amount' ? 'number' : field === 'date' ? 'date' : 'text'}
+          inputMode={field === 'amount' ? 'decimal' : undefined}
+          className="input flex-1"
+        />
+        <button
+          type="button"
+          onClick={() => typed.trim() && onAnswer(typed.trim())}
+          className="rounded-xl bg-indigo-600 px-4 text-xs font-semibold text-white dark:bg-indigo-500"
+        >
+          OK
+        </button>
+      </div>
     </div>
   )
 }
