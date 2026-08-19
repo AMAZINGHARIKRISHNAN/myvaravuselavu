@@ -18,6 +18,7 @@ import IncomeForm from '../components/entry/IncomeForm'
 import EmptyState from '../components/ui/EmptyState'
 import Skeleton from '../components/ui/Skeleton'
 import CsvImportButton from '../components/ui/CsvImportButton'
+import CollapsibleSection from '../components/ui/CollapsibleSection'
 import FloatingActionButton from '../components/ui/FloatingActionButton'
 import SwipeableRow from '../components/ui/SwipeableRow'
 import { countryOf } from '../lib/money'
@@ -189,6 +190,20 @@ export default function History() {
   )
   const pickedSummary = useMemo(() => selectionSummary(pickedRecords), [pickedRecords])
   const moving = useMemo(() => alreadyTagged(pickedRecords), [pickedRecords])
+
+  // A folded panel must still say what it is doing, or a filter left on looks
+  // like missing data — the same reason the 300-row cap is announced.
+  const filterSummary = useMemo(() => {
+    const on = [
+      start && `from ${start}`,
+      end && `to ${end}`,
+      category,
+      country,
+      paymentMethod,
+      store && `🏪 ${store}`,
+    ].filter(Boolean)
+    return on.length > 0 ? `Filtering: ${on.join(' · ')}` : 'Date range, category, card, store, CSV'
+  }, [start, end, category, country, paymentMethod, store])
 
   const searchLower = search.trim().toLowerCase()
 
@@ -372,7 +387,7 @@ export default function History() {
   }
 
   return (
-    <div className="space-y-4 pb-16 lg:mx-auto lg:max-w-3xl lg:pb-0">
+    <div className="space-y-3 pb-16 lg:mx-auto lg:max-w-3xl lg:pb-0">
       {/* Always-visible way into the month-end audit — no need to wait for the
           salary-day prompt. */}
       <Link
@@ -384,7 +399,9 @@ export default function History() {
           <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
             Month-end audit
           </span>
-          <span className="block text-xs text-gray-500 dark:text-gray-400">
+          {/* Only on a screen with the width to spare — on a phone the title
+              already says it, and the second line cost a third of the card. */}
+          <span className="hidden text-xs text-gray-500 sm:block dark:text-gray-400">
             Log bills, cross-check balances, catch anything missing
           </span>
         </span>
@@ -393,17 +410,16 @@ export default function History() {
 
       {/* Log for any day — pick a date, then add. The entry saves on that date
           and shows up in its day group, wherever you happen to log it from. */}
-      <div className="card p-4 space-y-2.5">
-        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300">
-          🗓️ Log for a specific day
-        </label>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="date"
-            value={logDate}
-            onChange={(e) => setLogDate(e.target.value)}
-            className="input min-w-0 flex-1"
-          />
+      <div className="card flex items-center gap-2 p-2.5">
+        <span className="shrink-0 pl-1 text-base" aria-hidden="true">🗓️</span>
+        <input
+          type="date"
+          aria-label="Log for a specific day"
+          value={logDate}
+          onChange={(e) => setLogDate(e.target.value)}
+          className="input min-w-0 flex-1"
+        />
+        <div className="flex shrink-0 gap-2">
           <button
             type="button"
             onClick={() => setAddingExpense(true)}
@@ -421,33 +437,35 @@ export default function History() {
         </div>
       </div>
 
-      <div className="flex rounded-full border border-gray-300/80 bg-white p-1 shadow-sm dark:border-white/5 dark:bg-neutral-900 dark:shadow-none">
-        <TabButton active={tab === 'all'} onClick={() => setTab('all')}>
-          All
-        </TabButton>
-        <TabButton active={tab === 'expenses'} onClick={() => setTab('expenses')}>
-          Expenses
-        </TabButton>
-        <TabButton active={tab === 'income'} onClick={() => setTab('income')}>
-          Income
-        </TabButton>
-      </div>
-
-      {/* Grouping spending after the fact. Until now an expense could only take
-          a trip at the moment it was created, and only if one happened to be
-          running — so anything logged before the trip existed could never be
-          put on it. */}
-      {tab === 'expenses' && (
-        <div className="flex justify-end">
+      {/* One row: which ledger, and — for spending — the way into grouping it
+          onto a trip. Two rows for two controls this small was most of the gap
+          between the tabs and the first record. */}
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 rounded-full border border-gray-300/80 bg-white p-1 shadow-sm dark:border-white/5 dark:bg-neutral-900 dark:shadow-none">
+          <TabButton active={tab === 'all'} onClick={() => setTab('all')}>
+            All
+          </TabButton>
+          <TabButton active={tab === 'expenses'} onClick={() => setTab('expenses')}>
+            Expenses
+          </TabButton>
+          <TabButton active={tab === 'income'} onClick={() => setTab('income')}>
+            Income
+          </TabButton>
+        </div>
+        {tab === 'expenses' && (
           <button
             type="button"
             onClick={() => (selecting ? stopSelecting() : setSelecting(true))}
-            className="min-h-9 rounded-full border border-gray-300/60 bg-gray-100 px-3 text-xs font-semibold text-gray-700 active:scale-95 dark:border-transparent dark:bg-neutral-800 dark:text-gray-200"
+            aria-label={selecting ? 'Cancel' : 'Select to group'}
+            className="min-h-10 shrink-0 rounded-full border border-gray-300/60 bg-gray-100 px-3 text-xs font-semibold text-gray-700 active:scale-95 dark:border-transparent dark:bg-neutral-800 dark:text-gray-200"
           >
-            {selecting ? 'Cancel' : '🧳 Select to group'}
+            {/* The label spells itself out where there is room; on a phone the
+                case alone says it, and the aria-label carries the meaning. */}
+            <span aria-hidden="true">🧳</span>
+            <span className="ml-1 hidden sm:inline">{selecting ? 'Cancel' : 'Select to group'}</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="relative">
         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">
@@ -468,8 +486,13 @@ export default function History() {
         />
       </div>
 
-      <div className="card p-4 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+      <CollapsibleSection
+        title="Filter, export, import"
+        subtitle={filterSummary}
+        icon="🔍"
+        defaultOpen={false}
+      >
+        <div className="grid grid-cols-2 gap-2">
           <label className="text-xs text-gray-500 space-y-1 block dark:text-gray-400">
             From
             <input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="input" />
@@ -482,8 +505,8 @@ export default function History() {
 
         {tab === 'expenses' && (
           // 2 columns on phones (3 side-by-side selects clip their labels);
-          // the third spreads full-width below, back to one row on desktop.
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+          // 4 across on a desktop, where the row was mostly empty space.
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
             <select value={category} onChange={(e) => setCategory(e.target.value)} className="input">
               <option value="">All categories</option>
               {CATEGORIES.map((c) => (
@@ -503,7 +526,7 @@ export default function History() {
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
-              className="input col-span-2 lg:col-span-1"
+              className="input"
             >
               <option value="">All methods</option>
               {paymentMethods.map((m) => (
@@ -516,7 +539,7 @@ export default function History() {
               <select
                 value={store}
                 onChange={(e) => setStore(e.target.value)}
-                className="input col-span-2 lg:col-span-3"
+                className="input col-span-2 lg:col-span-1"
               >
                 <option value="">All stores</option>
                 {storeOptions.map((s) => (
@@ -529,6 +552,7 @@ export default function History() {
           </div>
         )}
 
+        <div className="grid gap-2 sm:grid-cols-2">
         <button type="button" onClick={handleExport} className="btn-ghost w-full py-2 text-xs">
           ⬇ Export CSV
         </button>
@@ -558,7 +582,8 @@ export default function History() {
           onImport={tab === 'expenses' ? expenses.addMany : income.addMany}
         />
         )}
-      </div>
+        </div>
+      </CollapsibleSection>
 
       <div className="space-y-2">
         {loading && (

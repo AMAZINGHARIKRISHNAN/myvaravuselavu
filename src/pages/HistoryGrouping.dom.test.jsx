@@ -140,3 +140,59 @@ describe('picking logged rows and putting them on a trip', () => {
     expect(batchOps).not.toHaveBeenCalled()
   })
 })
+
+// ---- What the page costs in space -------------------------------------------
+// The chrome above the records had grown to seven stacked full-width blocks:
+// an audit link, a log-for-a-day card, a tab row, a group-button row, a search
+// box and a filter card holding five rows of controls. Most visits change none
+// of the filters and every visit paid for them.
+describe('the page does not spend the screen on chrome', () => {
+  const openFilters = () => fireEvent.click(screen.getByRole('button', { name: /Filter, export, import/i }))
+
+  it('keeps the filters folded away until they are wanted', () => {
+    renderPage(<History />)
+    // None of the five rows are in the document at all — not merely hidden.
+    expect(screen.queryByLabelText('From')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Export CSV/i })).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('All categories')).not.toBeInTheDocument()
+  })
+
+  it('still gives them back in one tap', () => {
+    renderPage(<History />)
+    openFilters()
+    expect(screen.getByLabelText('From')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Export CSV/i })).toBeInTheDocument()
+  })
+
+  // A folded filter is indistinguishable from missing data unless it says so.
+  it('says on the outside when a filter is narrowing the list', () => {
+    renderPage(<History />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expenses' }))
+    openFilters()
+    fireEvent.change(screen.getByDisplayValue('All categories'), { target: { value: 'Food' } })
+
+    expect(page()).toMatch(/Filtering:.*Food/)
+  })
+
+  it('reads as a date-range panel when nothing is set', () => {
+    renderPage(<History />)
+    expect(page()).toMatch(/Date range, category, card, store, CSV/)
+  })
+
+  // The tabs and the group button used to own a row each.
+  it('puts the grouping control on the same row as the tabs', () => {
+    renderPage(<History />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expenses' }))
+    const tabs = screen.getByRole('button', { name: 'Expenses' }).closest('div')
+    const group = screen.getByRole('button', { name: /Select to group/i })
+    expect(tabs.parentElement).toBe(group.parentElement)
+  })
+
+  // Shrinking a control must not cost it its name.
+  it('keeps every compacted control named for a screen reader', () => {
+    renderPage(<History />)
+    expect(screen.getByLabelText(/Log for a specific day/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Expenses' }))
+    expect(screen.getByRole('button', { name: /Select to group/i })).toBeInTheDocument()
+  })
+})
