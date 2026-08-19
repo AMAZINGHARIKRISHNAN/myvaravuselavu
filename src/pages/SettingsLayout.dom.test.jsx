@@ -31,14 +31,16 @@ vi.mock('../context/AuthContext', () => ({
 
 const { default: Settings } = await import('./Settings')
 
+// In the order they are meant to be read: the settings that decide figures,
+// then the two about how the app behaves, then the two touched once a year.
 const SECTIONS = [
-  'Appearance',
-  'AI (Gemini)',
-  'Salary',
   'Accounts',
+  'Salary',
   'Monthly budgets',
   'Recurring',
   'Goals',
+  'Appearance',
+  'AI (Gemini)',
   'Backup',
   'App lock',
 ]
@@ -64,6 +66,17 @@ describe('settings reads as one list of sections', () => {
     expect(screen.queryByRole('button', { name: /^Dark$|^Light$/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/Suit up/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Voice casting/i)).not.toBeInTheDocument()
+  })
+
+  // These were laid out in a two-column grid, which fills across before it
+  // fills down: straight down the left-hand column the page read Appearance,
+  // Salary, Budgets, Goals, App lock — an order nobody chose. And opening one
+  // section stretched its row while the one beside it stayed a closed bar,
+  // leaving a hole the height of whatever had been opened.
+  it('reads top to bottom in one column, in the intended order', () => {
+    renderPage(<Settings />)
+    const headings = [...document.querySelectorAll('h2')].map((h) => h.textContent)
+    expect(headings).toEqual(SECTIONS)
   })
 
   it('every section says what is inside it before being opened', () => {

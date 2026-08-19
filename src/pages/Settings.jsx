@@ -205,7 +205,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 lg:mx-auto lg:max-w-3xl">
       {user && (
         <div className="card flex items-center gap-3 p-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white dark:bg-indigo-500">
@@ -218,7 +218,307 @@ export default function Settings() {
         </div>
       )}
 
-      <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
+      <div className="space-y-3">
+
+      <CollapsibleSection
+        icon={<Landmark size={16} />}
+        title="Accounts"
+        subtitle={`${accounts.length} account${accounts.length === 1 ? '' : 's'}`}
+      >
+        <div className="space-y-3">
+          {accounts.map((account) => (
+            <div key={account.id} className="space-y-2 rounded-xl border border-gray-200 bg-gray-100/80 p-3 dark:border-transparent dark:bg-neutral-800/50">
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="Label"
+                  value={account.label}
+                  onChange={(e) => updateAccount(account.id, { label: e.target.value })}
+                  className="input min-w-0 flex-1"
+                />
+                <select
+                  value={account.country}
+                  onChange={(e) => updateAccount(account.id, { country: e.target.value })}
+                  className="input w-20"
+                >
+                  <option value="JP">JP</option>
+                  <option value="IN">IN</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => removeAccount(account.id)}
+                  className="text-red-500 text-xs px-2 py-2 font-medium dark:text-red-400"
+                >
+                  Remove
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block text-[11px] text-gray-500 space-y-1 dark:text-gray-400">
+                  Starting balance ({account.country === 'IN' ? 'INR' : 'JPY'})
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="Empty = start from zero"
+                    value={account.openingBalance ?? ''}
+                    onChange={(e) => updateAccount(account.id, { openingBalance: e.target.value })}
+                    className="input"
+                  />
+                </label>
+                {/* The reconcile point. Records dated before it are ignored, so
+                    it must sit on or before the first entry you want counted. */}
+                <label className="block text-[11px] text-gray-500 space-y-1 dark:text-gray-400">
+                  Counting from
+                  <input
+                    type="date"
+                    value={
+                      account.openingBalanceAt ? toDateInputValue(account.openingBalanceAt) : ''
+                    }
+                    onChange={(e) =>
+                      updateAccount(account.id, {
+                        openingBalanceAt: e.target.value
+                          ? parseDateInput(e.target.value).toISOString()
+                          : null,
+                      })
+                    }
+                    className="input"
+                  />
+                </label>
+              </div>
+              {/* What the app actually shows right now, so it's obvious the
+                  logs are moving the number — the box above never changes. */}
+              {(() => {
+                const live = balances.find((b) => b.id === account.id)
+                if (!live) {
+                  return (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                      Not saved yet — hit Save accounts and it appears on your dashboard and wallet.
+                    </p>
+                  )
+                }
+                return (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    Now:{' '}
+                    <span className="font-semibold text-gray-800 dark:text-gray-100">
+                      {formatByCountry(live.balance, account.country)}
+                    </span>{' '}
+                    {account.openingBalanceAt
+                      ? `— starting balance moved by everything logged since ${toDate(account.openingBalanceAt)?.toLocaleDateString()}`
+                      : '— starting from zero, counting every entry ever logged against it. Type the real balance to reconcile.'}
+                  </p>
+                )
+              })()}
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          Balances move with everything that names the account: expenses paid with it, income and
+          transfers into it, card top-ups and cash withdrawals out of it, and any ➕/➖ entry you
+          log. Re-enter the real balance anytime to reconcile — that resets "counting from" to
+          today, so set it back if you want older entries counted.
+        </p>
+        <button type="button" onClick={addAccount} className="btn-ghost w-full py-2 text-xs border-dashed">
+          + Add account
+        </button>
+        <button type="button" onClick={handleSaveAccounts} className="btn-primary w-full py-2.5 text-sm">
+          {retagging ? 'Moving records to the new name…' : 'Save accounts'}
+        </button>
+        <p className="text-[11px] text-gray-400 dark:text-gray-500">
+          Renaming an account brings its whole history along — every expense, income, transfer,
+          top-up, withdrawal and ➕/➖ entry that named the old label is re-tagged automatically.
+        </p>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        icon={<Banknote size={16} />}
+        title="Salary"
+        subtitle={`${formatJPY(parseFloat(salaryAmount) || 0)} · day ${salaryDate || '—'}`}
+      >
+        <form onSubmit={handleSaveSalary} className="space-y-3">
+          <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+            Salary amount (JPY)
+            <input
+              type="number"
+              step="any"
+              value={salaryAmount}
+              onChange={(e) => setSalaryAmount(e.target.value)}
+              className="input"
+            />
+          </label>
+          <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+            Salary date (day of month)
+            <input
+              type="number"
+              min="1"
+              max="31"
+              value={salaryDate}
+              onChange={(e) => setSalaryDate(e.target.value)}
+              className="input"
+            />
+          </label>
+          <button type="submit" className="btn-primary w-full py-2.5 text-sm">
+            Save salary
+          </button>
+        </form>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        icon={<ChartPie size={16} />}
+        title="Monthly budgets"
+        subtitle={`${Object.values(budgets).filter((v) => parseFloat(v) > 0).length} categor${
+          Object.values(budgets).filter((v) => parseFloat(v) > 0).length === 1 ? 'y' : 'ies'
+        } capped`}
+      >
+        <div className="grid grid-cols-2 gap-3">
+          {CATEGORIES.map((category) => (
+            <label key={category} className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+              {category}
+              <input
+                type="number"
+                step="any"
+                placeholder="—"
+                value={budgets[category] ?? ''}
+                onChange={(e) => updateBudget(category, e.target.value)}
+                className="input"
+              />
+              <span className="block text-[11px] text-gray-500 dark:text-gray-400">
+                {formatJPY(spendByCategory[category] || 0)} spent this month
+              </span>
+            </label>
+          ))}
+        </div>
+        <button type="button" onClick={handleSaveBudgets} className="btn-primary w-full py-2.5 text-sm">
+          Save budgets
+        </button>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        icon={<Repeat size={16} />}
+        title="Recurring"
+        subtitle={`${recurring.data.length} item${recurring.data.length === 1 ? '' : 's'} · reminded each month`}
+      >
+        <div className="space-y-2">
+          {recurring.data.length === 0 && (
+            <p className="text-xs text-gray-500 text-center py-2 dark:text-gray-400">None yet</p>
+          )}
+          {recurring.data.filter((r) => !recurringUndo.pendingIds.has(r.id)).map((r) => (
+            <div
+              key={r.id}
+              className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-100/80 px-3 py-2 dark:border-transparent dark:bg-neutral-800/50"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-800 truncate dark:text-gray-100">
+                  {r.kind === 'income' ? '💰' : r.kind === 'transfer' ? '💸' : '🧾'} {r.label}
+                </p>
+                {/* Which account it comes out of, and whether it posts by
+                    itself — both are things you can only get wrong silently. */}
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {formatJPY(r.amount)} · day {r.dayOfMonth}
+                  {r.kind === 'expense' && r.paymentMethod ? ` · ${r.paymentMethod}` : ''}
+                  {r.active && (r.autoPost ? ' · auto' : ' · needs a tap')}
+                  {!r.active && ' · paused'}
+                </p>
+              </div>
+              <div className="flex gap-2 text-xs font-medium shrink-0">
+                <button
+                  type="button"
+                  onClick={() => recurring.update(r.id, { active: !r.active })}
+                  className="text-gray-500 dark:text-gray-400"
+                >
+                  {r.active ? 'Pause' : 'Resume'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingRecurring(r)
+                    setShowRecurringForm(true)
+                  }}
+                  className="text-indigo-600 dark:text-indigo-400"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => recurringUndo.requestDelete(r.id)}
+                  className="text-red-500 dark:text-red-400"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setEditingRecurring(null)
+            setShowRecurringForm(true)
+          }}
+          className="btn-ghost w-full py-2 text-xs border-dashed"
+        >
+          + Add recurring
+        </button>
+      </CollapsibleSection>
+
+      {showRecurringForm && (
+        <RecurringForm initial={editingRecurring} onClose={() => setShowRecurringForm(false)} />
+      )}
+
+      <CollapsibleSection
+        icon={<Target size={16} />}
+        title="Goals"
+        subtitle="Drives the emergency fund tracker & family goal"
+      >
+        <form onSubmit={handleSaveGoals} className="space-y-3">
+          <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+            Monthly savings target (JPY) — drives "safe to spend"
+            <input
+              type="number"
+              step="any"
+              placeholder="e.g. 80000"
+              value={monthlySavingsTarget}
+              onChange={(e) => setMonthlySavingsTarget(e.target.value)}
+              className="input"
+            />
+          </label>
+          <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+            Emergency fund goal (JPY)
+            <input
+              type="number"
+              step="any"
+              placeholder="e.g. 500000"
+              value={emergencyFundGoal}
+              onChange={(e) => setEmergencyFundGoal(e.target.value)}
+              className="input"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+              Family goal label
+              <input
+                type="text"
+                placeholder="e.g. New house"
+                value={familyGoalLabel}
+                onChange={(e) => setFamilyGoalLabel(e.target.value)}
+                className="input"
+              />
+            </label>
+            <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
+              Family goal target (INR)
+              <input
+                type="number"
+                step="any"
+                placeholder="e.g. 1000000"
+                value={familyGoalTarget}
+                onChange={(e) => setFamilyGoalTarget(e.target.value)}
+                className="input"
+              />
+            </label>
+          </div>
+          <button type="submit" className="btn-primary w-full py-2.5 text-sm">
+            Save goals
+          </button>
+        </form>
+      </CollapsibleSection>
       <CollapsibleSection
         icon={theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
         title="Appearance"
@@ -400,306 +700,6 @@ export default function Settings() {
         subtitle="Off by default · nothing leaves the device until switched on"
       >
         <AiSettings />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        icon={<Banknote size={16} />}
-        title="Salary"
-        subtitle={`${formatJPY(parseFloat(salaryAmount) || 0)} · day ${salaryDate || '—'}`}
-      >
-        <form onSubmit={handleSaveSalary} className="space-y-3">
-          <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
-            Salary amount (JPY)
-            <input
-              type="number"
-              step="any"
-              value={salaryAmount}
-              onChange={(e) => setSalaryAmount(e.target.value)}
-              className="input"
-            />
-          </label>
-          <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
-            Salary date (day of month)
-            <input
-              type="number"
-              min="1"
-              max="31"
-              value={salaryDate}
-              onChange={(e) => setSalaryDate(e.target.value)}
-              className="input"
-            />
-          </label>
-          <button type="submit" className="btn-primary w-full py-2.5 text-sm">
-            Save salary
-          </button>
-        </form>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        icon={<Landmark size={16} />}
-        title="Accounts"
-        subtitle={`${accounts.length} account${accounts.length === 1 ? '' : 's'}`}
-      >
-        <div className="space-y-3">
-          {accounts.map((account) => (
-            <div key={account.id} className="space-y-2 rounded-xl border border-gray-200 bg-gray-100/80 p-3 dark:border-transparent dark:bg-neutral-800/50">
-              <div className="flex gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="Label"
-                  value={account.label}
-                  onChange={(e) => updateAccount(account.id, { label: e.target.value })}
-                  className="input min-w-0 flex-1"
-                />
-                <select
-                  value={account.country}
-                  onChange={(e) => updateAccount(account.id, { country: e.target.value })}
-                  className="input w-20"
-                >
-                  <option value="JP">JP</option>
-                  <option value="IN">IN</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => removeAccount(account.id)}
-                  className="text-red-500 text-xs px-2 py-2 font-medium dark:text-red-400"
-                >
-                  Remove
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block text-[11px] text-gray-500 space-y-1 dark:text-gray-400">
-                  Starting balance ({account.country === 'IN' ? 'INR' : 'JPY'})
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="Empty = start from zero"
-                    value={account.openingBalance ?? ''}
-                    onChange={(e) => updateAccount(account.id, { openingBalance: e.target.value })}
-                    className="input"
-                  />
-                </label>
-                {/* The reconcile point. Records dated before it are ignored, so
-                    it must sit on or before the first entry you want counted. */}
-                <label className="block text-[11px] text-gray-500 space-y-1 dark:text-gray-400">
-                  Counting from
-                  <input
-                    type="date"
-                    value={
-                      account.openingBalanceAt ? toDateInputValue(account.openingBalanceAt) : ''
-                    }
-                    onChange={(e) =>
-                      updateAccount(account.id, {
-                        openingBalanceAt: e.target.value
-                          ? parseDateInput(e.target.value).toISOString()
-                          : null,
-                      })
-                    }
-                    className="input"
-                  />
-                </label>
-              </div>
-              {/* What the app actually shows right now, so it's obvious the
-                  logs are moving the number — the box above never changes. */}
-              {(() => {
-                const live = balances.find((b) => b.id === account.id)
-                if (!live) {
-                  return (
-                    <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                      Not saved yet — hit Save accounts and it appears on your dashboard and wallet.
-                    </p>
-                  )
-                }
-                return (
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    Now:{' '}
-                    <span className="font-semibold text-gray-800 dark:text-gray-100">
-                      {formatByCountry(live.balance, account.country)}
-                    </span>{' '}
-                    {account.openingBalanceAt
-                      ? `— starting balance moved by everything logged since ${toDate(account.openingBalanceAt)?.toLocaleDateString()}`
-                      : '— starting from zero, counting every entry ever logged against it. Type the real balance to reconcile.'}
-                  </p>
-                )
-              })()}
-            </div>
-          ))}
-        </div>
-        <p className="text-[11px] text-gray-500 dark:text-gray-400">
-          Balances move with everything that names the account: expenses paid with it, income and
-          transfers into it, card top-ups and cash withdrawals out of it, and any ➕/➖ entry you
-          log. Re-enter the real balance anytime to reconcile — that resets "counting from" to
-          today, so set it back if you want older entries counted.
-        </p>
-        <button type="button" onClick={addAccount} className="btn-ghost w-full py-2 text-xs border-dashed">
-          + Add account
-        </button>
-        <button type="button" onClick={handleSaveAccounts} className="btn-primary w-full py-2.5 text-sm">
-          {retagging ? 'Moving records to the new name…' : 'Save accounts'}
-        </button>
-        <p className="text-[11px] text-gray-400 dark:text-gray-500">
-          Renaming an account brings its whole history along — every expense, income, transfer,
-          top-up, withdrawal and ➕/➖ entry that named the old label is re-tagged automatically.
-        </p>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        icon={<ChartPie size={16} />}
-        title="Monthly budgets"
-        subtitle={`${Object.values(budgets).filter((v) => parseFloat(v) > 0).length} categor${
-          Object.values(budgets).filter((v) => parseFloat(v) > 0).length === 1 ? 'y' : 'ies'
-        } capped`}
-      >
-        <div className="grid grid-cols-2 gap-3">
-          {CATEGORIES.map((category) => (
-            <label key={category} className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
-              {category}
-              <input
-                type="number"
-                step="any"
-                placeholder="—"
-                value={budgets[category] ?? ''}
-                onChange={(e) => updateBudget(category, e.target.value)}
-                className="input"
-              />
-              <span className="block text-[11px] text-gray-500 dark:text-gray-400">
-                {formatJPY(spendByCategory[category] || 0)} spent this month
-              </span>
-            </label>
-          ))}
-        </div>
-        <button type="button" onClick={handleSaveBudgets} className="btn-primary w-full py-2.5 text-sm">
-          Save budgets
-        </button>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        icon={<Repeat size={16} />}
-        title="Recurring"
-        subtitle={`${recurring.data.length} item${recurring.data.length === 1 ? '' : 's'} · reminded each month`}
-      >
-        <div className="space-y-2">
-          {recurring.data.length === 0 && (
-            <p className="text-xs text-gray-500 text-center py-2 dark:text-gray-400">None yet</p>
-          )}
-          {recurring.data.filter((r) => !recurringUndo.pendingIds.has(r.id)).map((r) => (
-            <div
-              key={r.id}
-              className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-100/80 px-3 py-2 dark:border-transparent dark:bg-neutral-800/50"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate dark:text-gray-100">
-                  {r.kind === 'income' ? '💰' : r.kind === 'transfer' ? '💸' : '🧾'} {r.label}
-                </p>
-                {/* Which account it comes out of, and whether it posts by
-                    itself — both are things you can only get wrong silently. */}
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {formatJPY(r.amount)} · day {r.dayOfMonth}
-                  {r.kind === 'expense' && r.paymentMethod ? ` · ${r.paymentMethod}` : ''}
-                  {r.active && (r.autoPost ? ' · auto' : ' · needs a tap')}
-                  {!r.active && ' · paused'}
-                </p>
-              </div>
-              <div className="flex gap-2 text-xs font-medium shrink-0">
-                <button
-                  type="button"
-                  onClick={() => recurring.update(r.id, { active: !r.active })}
-                  className="text-gray-500 dark:text-gray-400"
-                >
-                  {r.active ? 'Pause' : 'Resume'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingRecurring(r)
-                    setShowRecurringForm(true)
-                  }}
-                  className="text-indigo-600 dark:text-indigo-400"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => recurringUndo.requestDelete(r.id)}
-                  className="text-red-500 dark:text-red-400"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setEditingRecurring(null)
-            setShowRecurringForm(true)
-          }}
-          className="btn-ghost w-full py-2 text-xs border-dashed"
-        >
-          + Add recurring
-        </button>
-      </CollapsibleSection>
-
-      {showRecurringForm && (
-        <RecurringForm initial={editingRecurring} onClose={() => setShowRecurringForm(false)} />
-      )}
-
-      <CollapsibleSection
-        icon={<Target size={16} />}
-        title="Goals"
-        subtitle="Drives the emergency fund tracker & family goal"
-      >
-        <form onSubmit={handleSaveGoals} className="space-y-3">
-          <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
-            Monthly savings target (JPY) — drives "safe to spend"
-            <input
-              type="number"
-              step="any"
-              placeholder="e.g. 80000"
-              value={monthlySavingsTarget}
-              onChange={(e) => setMonthlySavingsTarget(e.target.value)}
-              className="input"
-            />
-          </label>
-          <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
-            Emergency fund goal (JPY)
-            <input
-              type="number"
-              step="any"
-              placeholder="e.g. 500000"
-              value={emergencyFundGoal}
-              onChange={(e) => setEmergencyFundGoal(e.target.value)}
-              className="input"
-            />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
-              Family goal label
-              <input
-                type="text"
-                placeholder="e.g. New house"
-                value={familyGoalLabel}
-                onChange={(e) => setFamilyGoalLabel(e.target.value)}
-                className="input"
-              />
-            </label>
-            <label className="block text-xs text-gray-500 space-y-1 dark:text-gray-400">
-              Family goal target (INR)
-              <input
-                type="number"
-                step="any"
-                placeholder="e.g. 1000000"
-                value={familyGoalTarget}
-                onChange={(e) => setFamilyGoalTarget(e.target.value)}
-                className="input"
-              />
-            </label>
-          </div>
-          <button type="submit" className="btn-primary w-full py-2.5 text-sm">
-            Save goals
-          </button>
-        </form>
       </CollapsibleSection>
 
       <CollapsibleSection
