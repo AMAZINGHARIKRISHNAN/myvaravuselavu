@@ -17,6 +17,9 @@ const EXPENSES = [
   { id: 'e2', amount: 1200, category: 'Transport', paymentMethod: 'Pasmo', date: new Date(2026, 7, 2, 12) },
   { id: 'e3', amount: 1500, category: 'Food', paymentMethod: 'UPI', country: 'IN', date: new Date(2026, 7, 2, 12) },
   { id: 'e4', amount: 9000, category: 'Shopping', paymentMethod: 'MUFJ', tripId: 'old-trip', date: new Date(2026, 7, 2, 12) },
+  // Logged with no card at all — the rows that read "Food · — · JP".
+  { id: 'e5', amount: 700, category: 'Food', country: 'IN', date: new Date(2026, 7, 2, 12) },
+  { id: 'e6', amount: 250, category: 'Snacks', country: 'IN', date: new Date(2026, 7, 2, 12) },
 ]
 const TRIPS = [{ id: 't1', name: 'Fukuoka', startDate: new Date(2026, 7, 1, 12), endDate: new Date(2026, 7, 5, 12) }]
 
@@ -194,5 +197,82 @@ describe('the page does not spend the screen on chrome', () => {
     expect(screen.getByLabelText(/Log for a specific day/i)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Expenses' }))
     expect(screen.getByRole('button', { name: /Select to group/i })).toBeInTheDocument()
+  })
+})
+
+// ---- Answering the dash -----------------------------------------------------
+// A row logged without a payment method reads "Food · — · JP", and the only way
+// to answer that dash was to open each record in turn. Imported rows arrive
+// like that in bulk, which is when one at a time is worst.
+describe('setting the card on records that have none', () => {
+  const startPickingHere = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Expenses' }))
+    fireEvent.click(screen.getByRole('button', { name: /Select to group/i }))
+  }
+
+  it('offers to pick exactly the rows with no card', () => {
+    renderPage(<History />)
+    startPickingHere()
+    // e5 and e6 in the fixture have no paymentMethod.
+    fireEvent.click(screen.getByRole('button', { name: /Pick the 2 with no card/i }))
+    expect(page()).toContain('2 selected')
+  })
+
+  // The card is what decides the currency, so the two are written together.
+  it('writes the card and the currency it implies, in one commit', () => {
+    renderPage(<History />)
+    startPickingHere()
+    fireEvent.click(screen.getByRole('button', { name: /Pick the 2 with no card/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set card' }))
+    fireEvent.click(screen.getByRole('button', { name: /^MUFJ/ }))
+
+    expect(batchOps).toHaveBeenCalledTimes(1)
+    expect(batchOps.mock.calls[0][0]).toEqual([
+      { op: 'update', name: 'expenses', id: 'e5', data: { paymentMethod: 'MUFJ', country: 'JP' } },
+      { op: 'update', name: 'expenses', id: 'e6', data: { paymentMethod: 'MUFJ', country: 'JP' } },
+    ])
+  })
+
+  // Moving records between two totals that must never be added together is not
+  // something to find out afterwards.
+  it('warns which records would change currency before writing', () => {
+    renderPage(<History />)
+    startPickingHere()
+    fireEvent.click(screen.getByRole('button', { name: /Pick the 2 with no card/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set card' }))
+
+    // The two rows are filed as rupees, so a yen card would move them.
+    expect(page()).toMatch(/2 would become ¥ yen/)
+    expect(batchOps).not.toHaveBeenCalled()
+  })
+
+  it('says nothing about currency for a card that already matches', () => {
+    renderPage(<History />)
+    startPickingHere()
+    fireEvent.click(screen.getByRole('button', { name: /Pick the 2 with no card/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set card' }))
+
+    // UPI is rupees and so are these rows — nothing moves, so nothing is said.
+    expect(screen.getByRole('button', { name: /^UPI/ }).textContent).not.toMatch(/would become/)
+  })
+
+  // Cash holds both currencies, so it cannot answer — and must not pretend to.
+  it('writes no currency for cash', () => {
+    renderPage(<History />)
+    startPickingHere()
+    fireEvent.click(screen.getByRole('button', { name: /Pick the 2 with no card/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Set card' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Cash/ }))
+
+    expect(batchOps.mock.calls[0][0][0].data).toEqual({ paymentMethod: 'Cash' })
+  })
+
+  it('does not offer the shortcut when every row has a card', () => {
+    renderPage(<History />)
+    fireEvent.click(screen.getByRole('button', { name: 'Income' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expenses' }))
+    fireEvent.click(screen.getByRole('button', { name: /Select to group/i }))
+    // The fixture has two, so the shortcut is offered; with none it is absent.
+    expect(screen.getByRole('button', { name: /Pick the 2 with no card/i })).toBeInTheDocument()
   })
 })

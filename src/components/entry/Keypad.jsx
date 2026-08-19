@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Delete } from 'lucide-react'
 import { useTheme } from '../../context/ThemeContext'
 import { pressKey, displayAmount } from '../../lib/amountInput'
@@ -25,22 +26,63 @@ export default function Keypad({ value, onChange, onNext, quickAmounts = [], cou
   const isINR = country === 'IN'
   const symbol = isINR ? '₹' : '¥'
 
-  const backspace = () => {
+  // Buzz only for a thumb. A physical key already gives its own feedback, and
+  // a laptop that supports vibrate has nothing to vibrate.
+  const buzz = () => {
     if (navigator.vibrate) navigator.vibrate(8)
+  }
+
+  const backspace = ({ tapped = true } = {}) => {
+    if (tapped) buzz()
     onChange(value.slice(0, -1))
   }
 
   // The typing rules live in lib/amountInput.js so they can be tested — this
   // is money, and a field that quietly drops a digit is a bug that only
   // surfaces in a total weeks later.
-  const press = (key) => {
+  const press = (key, { tapped = true } = {}) => {
     const next = pressKey(value, key)
     if (next === null) return
-    if (navigator.vibrate) navigator.vibrate(8)
+    if (tapped) buzz()
     onChange(next)
   }
 
   const amount = parseFloat(value || '0')
+
+  // The same twelve keys, from the keyboard the laptop already has.
+  //
+  // This screen was built thumb-first and stayed that way: on a laptop every
+  // amount meant hunting twelve targets with a pointer, one click per digit.
+  // The keys go through pressKey exactly as the buttons do, so there is one set
+  // of rules about what a digit does to an amount, not two.
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      // Browser and OS shortcuts keep working.
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      // Never steal a keystroke meant for something else on screen — a note
+      // field, a store name, or Enter on a focused button.
+      const tag = event.target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return
+      if (event.target?.isContentEditable) return
+
+      if (event.key >= '0' && event.key <= '9') {
+        event.preventDefault()
+        press(event.key, { tapped: false })
+      } else if (event.key === '.') {
+        event.preventDefault()
+        press('.', { tapped: false })
+      } else if (event.key === 'Backspace') {
+        event.preventDefault()
+        backspace({ tapped: false })
+      } else if (event.key === 'Enter' && amount > 0) {
+        event.preventDefault()
+        onNext()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
   const display = displayAmount(value)
 
   // Sized on the WHOLE rendered string, symbol included, and stepping down
@@ -130,6 +172,12 @@ export default function Keypad({ value, onChange, onNext, quickAmounts = [], cou
       >
         Next →
       </button>
+
+      {/* Only where there is a keyboard to mean it. A phone is the case this
+          screen was designed for and it should not be told about keys. */}
+      <p className="hidden text-center text-[11px] text-gray-400 sm:block dark:text-gray-500">
+        Type the digits · Backspace to correct · Enter for next
+      </p>
     </div>
   )
 }

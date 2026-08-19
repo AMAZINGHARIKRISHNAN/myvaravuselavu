@@ -26,6 +26,8 @@ import { useToast } from '../context/ToastContext'
 import BottomSheet from '../components/ui/BottomSheet'
 import { capGroups, ROW_LIMIT } from '../lib/listWindow'
 import { alreadyTagged, selectedRecords, selectionSummary, tagTripOps } from '../lib/tripTagging'
+import { currencyChanges, missingMethod, setMethodOps } from '../lib/bulkEdit'
+import { vocabulary } from '../lib/storyIntake'
 import { useBatchOps } from '../hooks/useBatchOps'
 
 const EMPTY = ''
@@ -42,7 +44,9 @@ export default function History() {
   // Needed so an imported row's currency can be derived from the account
   // its payment method names.
   const { settings } = useSettings()
-  const accounts = settings?.accounts || []
+  // Held steady across renders: `settings?.accounts || []` is a fresh array
+  // every time, which would rebuild the vocabulary below on every keystroke.
+  const accounts = useMemo(() => settings?.accounts || [], [settings?.accounts])
   const [editing, setEditing] = useState(null)
   // Which editor to open. Used to be inferred from the active tab, so the
   // All tab — where `tab` is neither 'expenses' nor 'income' — rendered no
@@ -84,6 +88,7 @@ export default function History() {
   const [selecting, setSelecting] = useState(false)
   const [picked, setPicked] = useState(() => new Set())
   const [choosingTrip, setChoosingTrip] = useState(false)
+  const [choosingMethod, setChoosingMethod] = useState(false)
   const trips = useCollection('trips', { enabled: selecting })
   const batchOps = useBatchOps()
   const { toast } = useToast()
@@ -134,10 +139,22 @@ export default function History() {
   const expensesUndo = useUndoableDelete(removeExpenseSynced, 'Expense')
   const incomeUndo = useUndoableDelete(removeIncomeSynced, 'Income')
 
+  // For FILTERING: only what actually appears in the loaded records, so the
+  // dropdown never offers a method that would return nothing.
   const paymentMethods = useMemo(() => {
     const set = new Set(expenses.data.map((e) => e.paymentMethod).filter(Boolean))
     return Array.from(set)
   }, [expenses.data])
+
+  // For ASSIGNING: everything that can pay for something — your accounts and
+  // the fixed methods — from the one vocabulary the entry sheet and the
+  // assistant also read. Filtering and assigning are opposite questions, and
+  // using the filter list to assign would mean you could only ever set a card
+  // that some record already carried.
+  const assignableMethods = useMemo(
+    () => vocabulary({ accounts, trips: [] }).paymentMethods,
+    [accounts]
+  )
 
   // Shops seen in the loaded range, most-spent first, so the picker leads with
   // the places you actually go instead of an alphabet soup of one-offs.
@@ -163,6 +180,7 @@ export default function History() {
     setSelecting(false)
     setPicked(new Set())
     setChoosingTrip(false)
+    setChoosingMethod(false)
   }
 
   // ONE commit for the whole selection. Half a trip tagged is a total that is
@@ -205,6 +223,20 @@ export default function History() {
     return on.length > 0 ? `Filtering: ${on.join(' · ')}` : 'Date range, category, card, store, CSV'
   }, [start, end, category, country, paymentMethod, store])
 
+  // Answering the dash in "Food · — · JP". The method decides the currency, so
+  // both are written together, and what that would move is shown first.
+  const setMethod = async (method) => {
+    const ops = setMethodOps(pickedRecords, method, accounts)
+    if (ops.length === 0) return
+    try {
+      await batchOps(ops)
+      toast(`✓ ${ops.length} set to ${method}`)
+      stopSelecting()
+    } catch {
+      toast('⚠️ Could not save that — check your connection and try again')
+    }
+  }
+
   const searchLower = search.trim().toLowerCase()
 
   const filteredExpenses = expenses.data.filter((e) => {
@@ -231,6 +263,10 @@ export default function History() {
 
   const records = tab === 'expenses' ? filteredExpenses : filteredIncome
   const activeUndo = tab === 'expenses' ? expensesUndo : incomeUndo
+  // The rows reading "Food · — · JP". Finding them by eye through a month of
+  // records is the reason they stay unanswered. Taken from what is on screen,
+  // so the shortcut never picks a row a filter is hiding.
+  const dashRows = useMemo(() => missingMethod(records), [records])
   // Read through a ref so the callback handed to every row keeps ONE identity
   // for the life of the page. A new function each render would defeat the row's
   // memoisation completely, which is the whole point of extracting it.
@@ -722,6 +758,15 @@ export default function History() {
                   ? 'Tap the rows to group'
                   : `${pickedSummary.count} selected`}
               </p>
+              {pickedSummary.count === 0 && dashRows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setPicked(new Set(dashRows.map((r) => r.id)))}
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-400"
+                >
+                  Pick the {dashRows.length} with no card
+                </button>
+              )}
               {pickedSummary.count > 0 && (
                 <p className="text-xs tabular-nums text-gray-500 dark:text-gray-400">
                   {[
@@ -736,6 +781,14 @@ export default function History() {
             <button
               type="button"
               disabled={pickedSummary.count === 0}
+              onClick={() => setChoosingMethod(true)}
+              className="shrink-0 rounded-xl border border-gray-300/60 bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 disabled:opacity-40 dark:border-transparent dark:bg-neutral-800 dark:text-gray-200"
+            >
+              Set card
+            </button>
+            <button
+              type="button"
+              disabled={pickedSummary.count === 0}
               onClick={() => setChoosingTrip(true)}
               className="btn-primary shrink-0 px-4 py-2 text-xs disabled:opacity-40"
             >
@@ -743,6 +796,40 @@ export default function History() {
             </button>
           </div>
         </div>
+      )}
+
+      {choosingMethod && (
+        <BottomSheet onClose={() => setChoosingMethod(false)} title="Which card or account?">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Setting this on {pickedSummary.count} record{pickedSummary.count === 1 ? '' : 's'}. The
+            card decides the currency, so both are written together.
+          </p>
+
+          <div className="space-y-2">
+            {assignableMethods.map((method) => {
+              const moving = currencyChanges(pickedRecords, method, accounts)
+              return (
+                <button
+                  key={method}
+                  type="button"
+                  onClick={() => setMethod(method)}
+                  className="card flex w-full items-center justify-between gap-3 p-3 text-left active:scale-[0.99] touch-manipulation"
+                >
+                  <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    {method}
+                  </span>
+                  {/* Said before it happens: this moves figures between two
+                      totals that must never be added together. */}
+                  {moving.count > 0 && (
+                    <span className="shrink-0 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                      {moving.count} would become {moving.to === 'IN' ? '₹ rupees' : '¥ yen'}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </BottomSheet>
       )}
 
       {choosingTrip && (
