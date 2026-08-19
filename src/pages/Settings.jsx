@@ -205,10 +205,10 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {user && (
-        <div className="card flex items-center gap-3 p-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white dark:bg-indigo-500">
+        <div className="card flex items-center gap-3 p-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white dark:bg-indigo-500">
             {user.email?.[0]?.toUpperCase()}
           </div>
           <div className="min-w-0">
@@ -218,13 +218,14 @@ export default function Settings() {
         </div>
       )}
 
-      <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
-      <div className="card p-4 space-y-3">
+      <div className="space-y-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 lg:space-y-0">
+      <CollapsibleSection
+        icon={theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+        title="Appearance"
+        subtitle="Theme, suit, sound & voice"
+      >
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Appearance</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Light or dark, your call</p>
-          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Light or dark, your call</p>
           <button
             type="button"
             onClick={toggleTheme}
@@ -391,7 +392,7 @@ export default function Settings() {
             <VoiceCasting />
           </div>
         </div>
-      </div>
+      </CollapsibleSection>
 
       <CollapsibleSection
         icon={<Sparkles size={16} />}
