@@ -41,6 +41,23 @@ const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models'
 export const apiKey = () => import.meta.env.VITE_GEMINI_API_KEY || ''
 export const hasApiKey = () => apiKey().length > 0
 
+// A key in a client bundle is readable by anyone who loads the page. That is
+// unavoidable for a static site and is why the key must be restricted at the
+// Google console, by HTTP referrer, to the one origin that is meant to use it.
+//
+// This says so out loud in development when the key is present somewhere it
+// should not be — a preview build, a tunnel, someone else's host — because that
+// is the moment a referrer restriction would be silently doing nothing. It
+// warns; it cannot fix anything, and it deliberately does not try.
+if (import.meta.env.DEV && hasApiKey() && typeof location !== 'undefined') {
+  const host = location.hostname
+  if (host !== 'localhost' && host !== '127.0.0.1' && !host.endsWith('myvaravuselavu.web.app')) {
+    console.warn(
+      `[ai] A Gemini key is present on ${host}. Client keys are public — restrict it by HTTP referrer in the Google Cloud console.`
+    )
+  }
+}
+
 // ---- Feature flags (per device, all off) -----------------------------------
 //
 // localStorage rather than the settings doc: this is a per-device consent
