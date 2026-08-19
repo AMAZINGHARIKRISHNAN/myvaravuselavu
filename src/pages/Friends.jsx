@@ -415,9 +415,23 @@ export default function Friends() {
   )
 }
 
+// What this ledger is doing, said in the order a person asks it.
+//
+// It used to be four equal tiles of jargon. The worst of it was the word
+// "gave", which appeared in two neighbouring cells meaning opposite things —
+// you paying a shop, and friends paying you back — and a headline reading "You
+// have to give 131,080" directly above "gave 131,080", which is a contradiction
+// unless you already know that the first is the cost and the second is what you
+// have settled of it.
+//
+// The one figure that matters day to day was the one in the smallest type: what
+// is still to come back. It leads now, and each number underneath says what it
+// is in words rather than naming an internal field.
+//
+// Same figures throughout. Nothing here computes anything the old card did not.
 function LedgerSummaryCard({ country, totals }) {
   const fmt = (v) => formatByCountry(v, country)
-  const iOwe = totals.cost - totals.paid
+  const stillToPay = totals.cost - totals.paid
   const owedToMe = totals.due - totals.received
   const plClass = (v) =>
     v > 0
@@ -425,53 +439,78 @@ function LedgerSummaryCard({ country, totals }) {
       : v < 0
         ? 'text-red-500 dark:text-red-400'
         : 'text-gray-900 dark:text-gray-100'
+  const signed = (v) => `${v > 0 ? '+' : ''}${fmt(v)}`
 
   return (
-    <div className="card p-4 space-y-4">
+    <div className="card p-4 space-y-3">
       <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
         🤝 Friend ledger {country === 'IN' ? '(INR)' : '(JPY)'}
       </h2>
 
-      <div className="grid grid-cols-2 gap-3">
+      {/* The question this page exists to answer. */}
+      <div>
+        <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+          Still to come back to you
+        </p>
+        <p
+          className={`text-2xl font-bold tabular-nums ${
+            owedToMe > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-gray-100'
+          }`}
+        >
+          {fmt(owedToMe)}
+        </p>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          {owedToMe > 0
+            ? `${fmt(totals.received)} of ${fmt(totals.due)} paid back so far`
+            : `everything owed has been paid back`}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 border-t border-gray-200/70 pt-3 dark:border-white/5">
         <div>
-          <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">You have to give</p>
-          <p className="text-base font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmt(totals.cost)}</p>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400">
-            gave {fmt(totals.paid)}
-            {iOwe > 0 && <span className="text-amber-600 dark:text-amber-400"> · {fmt(iOwe)} pending</span>}
+          <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+            You have paid out
           </p>
-        </div>
-        <div>
-          <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Friends have to give you</p>
-          <p className="text-base font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmt(totals.due)}</p>
+          <p className="text-base font-bold tabular-nums text-gray-900 dark:text-gray-100">
+            {fmt(totals.paid)}
+          </p>
           <p className="text-[11px] text-gray-500 dark:text-gray-400">
-            gave {fmt(totals.received)}
-            {owedToMe > 0 && (
-              <span className="text-amber-600 dark:text-amber-400"> · {fmt(owedToMe)} pending</span>
+            {stillToPay > 0 ? (
+              <span className="text-amber-600 dark:text-amber-400">
+                {fmt(stillToPay)} of the cost still to pay
+              </span>
+            ) : (
+              'the full cost, nothing left to pay'
             )}
           </p>
         </div>
+
         <div>
           <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
-            Profit / loss (settled)
+            If everyone pays up
           </p>
-          <p className={`text-base font-bold tabular-nums ${plClass(totals.realized)}`}>
-            {totals.realized > 0 ? '+' : ''}
-            {fmt(totals.realized)}
+          <p className={`text-base font-bold tabular-nums ${plClass(totals.expected)}`}>
+            {signed(totals.expected)}
           </p>
           <p className="text-[11px] text-gray-500 dark:text-gray-400">
-            from {totals.settledCount} settled item{totals.settledCount === 1 ? '' : 's'}
+            {totals.expected === 0
+              ? 'you come out level'
+              : `what you are ${totals.expected > 0 ? 'ahead' : 'down'} by once it is all settled`}
           </p>
-        </div>
-        <div>
-          <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400">Expected if all settle</p>
-          <p className={`text-base font-bold tabular-nums ${plClass(totals.expected)}`}>
-            {totals.expected > 0 ? '+' : ''}
-            {fmt(totals.expected)}
-          </p>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400">cash in minus cash out</p>
         </div>
       </div>
+
+      {/* Only once something has actually closed. Before that it is a zero that
+          looks like a result. */}
+      {totals.settledCount > 0 && (
+        <p className="border-t border-gray-200/70 pt-2 text-[11px] text-gray-500 dark:border-white/5 dark:text-gray-400">
+          Settled so far:{' '}
+          <span className={`font-semibold tabular-nums ${plClass(totals.realized)}`}>
+            {signed(totals.realized)}
+          </span>{' '}
+          across {totals.settledCount} closed item{totals.settledCount === 1 ? '' : 's'}
+        </p>
+      )}
     </div>
   )
 }
