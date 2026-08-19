@@ -276,3 +276,52 @@ describe('setting the card on records that have none', () => {
     expect(screen.getByRole('button', { name: /Pick the 2 with no card/i })).toBeInTheDocument()
   })
 })
+
+// ---- Reachable without a pointer --------------------------------------------
+// The selection row was a <div onClick> around a readOnly checkbox: tappable,
+// and nothing else. On a laptop that is a dead end — you could see the boxes and
+// never tick one.
+describe('picking works without a mouse', () => {
+  const startPickingHere = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Expenses' }))
+    fireEvent.click(screen.getByRole('button', { name: /Select to group/i }))
+  }
+
+  it('offers real checkboxes that can be operated', () => {
+    renderPage(<History />)
+    startPickingHere()
+    const box = screen.getAllByRole('checkbox')[0]
+    // Not readOnly, not aria-disabled — a control the browser will actually
+    // focus and toggle with Space.
+    expect(box).not.toBeDisabled()
+    expect(box.readOnly).toBe(false)
+    expect(box).toHaveAccessibleName()
+  })
+
+  it('toggles from the keyboard', () => {
+    renderPage(<History />)
+    startPickingHere()
+    const box = screen.getAllByRole('checkbox')[0]
+    box.focus()
+    expect(box).toHaveFocus()
+    fireEvent.click(box) // what Space does to a focused checkbox
+    expect(page()).toContain('1 selected')
+    fireEvent.click(box)
+    expect(page()).not.toContain('1 selected')
+  })
+
+  // Clicking the box used to fire the checkbox AND the div's handler.
+  it('counts one tap as one tap', () => {
+    renderPage(<History />)
+    startPickingHere()
+    fireEvent.click(screen.getAllByRole('checkbox')[0])
+    expect(page()).toContain('1 selected')
+  })
+
+  // The row's label is what a screen reader reads out; it has to say which row.
+  it('names each row by its amount', () => {
+    renderPage(<History />)
+    startPickingHere()
+    expect(screen.getByRole('checkbox', { name: /3,000/ })).toBeInTheDocument()
+  })
+})

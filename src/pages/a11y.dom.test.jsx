@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { axe } from 'vitest-axe'
 import * as matchers from 'vitest-axe/matchers'
+import { screen, fireEvent } from '@testing-library/react'
 import { renderPage, SETTINGS, emptyCollection, balancesFixture } from '../test/harness'
 
 expect.extend(matchers)
@@ -41,6 +42,9 @@ const screens = {
   Trips: () => import('./Trips'),
   Notes: () => import('./Notes'),
   Settings: () => import('./Settings'),
+  // The most interactive screen in the app: a list, three sheets, a filter
+  // panel and a selection mode that writes to money records.
+  History: () => import('./History'),
 }
 
 describe('accessibility', () => {
@@ -51,4 +55,14 @@ describe('accessibility', () => {
       expect(await axe(container, RULES)).toHaveNoViolations()
     })
   }
+
+  // A mode is a different screen. Selection swaps every row for a checkbox and
+  // puts a floating bar over the list, and none of that was ever measured.
+  it('History has no axe violations while picking rows', { timeout: 20000 }, async () => {
+    const { default: History } = await import('./History')
+    const { container } = renderPage(<History />)
+    fireEvent.click(screen.getByRole('button', { name: 'Expenses' }))
+    fireEvent.click(screen.getByRole('button', { name: /Select to group/i }))
+    expect(await axe(container, RULES)).toHaveNoViolations()
+  })
 })

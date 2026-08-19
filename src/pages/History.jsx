@@ -263,10 +263,6 @@ export default function History() {
 
   const records = tab === 'expenses' ? filteredExpenses : filteredIncome
   const activeUndo = tab === 'expenses' ? expensesUndo : incomeUndo
-  // The rows reading "Food · — · JP". Finding them by eye through a month of
-  // records is the reason they stay unanswered. Taken from what is on screen,
-  // so the shortcut never picks a row a filter is hiding.
-  const dashRows = useMemo(() => missingMethod(records), [records])
   // Read through a ref so the callback handed to every row keeps ONE identity
   // for the life of the page. A new function each render would defeat the row's
   // memoisation completely, which is the whole point of extracting it.
@@ -371,6 +367,18 @@ export default function History() {
   const { groups: visibleGroups, hidden: hiddenRows } = useMemo(
     () => capGroups(dayGroups),
     [dayGroups]
+  )
+
+  // The rows reading "Food · — · JP". Finding them by eye through a month of
+  // records is the reason they stay unanswered.
+  //
+  // Taken from the rows actually DRAWN, not from everything that matched. The
+  // list stops at ROW_LIMIT, so counting past it would offer to select records
+  // that are not on screen — and then write a card to them. Nothing in this app
+  // should change a figure you cannot see.
+  const dashRows = useMemo(
+    () => missingMethod(visibleGroups.flatMap((g) => g.records)),
+    [visibleGroups]
   )
 
   const handleExport = () => {
@@ -930,19 +938,26 @@ const LedgerRow = memo(function LedgerRow({ record, tab, onEdit, onDelete, selec
 
   // While picking, the whole row is the checkbox and swiping is off — a swipe
   // that deletes and a tap that selects are too close together to share a row.
+  //
+  // A real <label>, not a div with an onClick. The browser then gives the row
+  // its own behaviour for free: click anywhere on it, reach it with Tab, toggle
+  // it with Space, and a focus ring that says where you are. It was a readOnly
+  // checkbox inside a clickable div, which is tappable and nothing else — and
+  // on a laptop, nothing else is a dead end. With no handler on the container
+  // there is also no double-toggle when the box itself is clicked.
+  const Shell = selecting ? 'label' : 'div'
   const card = (
-      <div
+      <Shell
         data-tone={isExpenses ? 'out' : 'in'}
-        onClick={selecting ? () => onPick(record.id) : undefined}
         className={`card p-3 pl-4 flex items-center gap-3 animate-[toast-in_0.15s_ease-out] ${
-          selecting ? 'cursor-pointer' : ''
+          selecting ? 'cursor-pointer focus-within:ring-2 focus-within:ring-indigo-400' : ''
         } ${picked ? 'ring-2 ring-indigo-500' : ''}`}
       >
         {selecting && (
           <input
             type="checkbox"
             checked={picked}
-            readOnly
+            onChange={() => onPick(record.id)}
             aria-label={`Select ${formatByCountry(record.amount, countryOf(record))} ${record.category || ''}`}
             className="h-5 w-5 shrink-0 accent-indigo-600"
           />
@@ -995,7 +1010,7 @@ const LedgerRow = memo(function LedgerRow({ record, tab, onEdit, onDelete, selec
             <Trash2 size={15} />
           </button>
         </div>
-      </div>
+      </Shell>
   )
 
   if (selecting) return card
