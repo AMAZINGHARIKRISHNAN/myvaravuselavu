@@ -30,6 +30,7 @@ import {
 } from '../lib/trips'
 import { lossAmount, lossKind } from '../lib/loss'
 import BottomSheet from '../components/ui/BottomSheet'
+import TripAnalysis from '../components/trips/TripAnalysis'
 import EmptyState from '../components/ui/EmptyState'
 import Skeleton from '../components/ui/Skeleton'
 
@@ -310,28 +311,10 @@ function TripSheet({ trip, expenses, losses = [], onEdit, onClose }) {
         </div>
       )}
 
-      {/* Where it went, each currency on its own. */}
-      {['JP', 'IN'].map((country) => {
-        const cats = Object.entries(totals.byCategory[country]).sort((a, b) => b[1] - a[1])
-        if (cats.length === 0) return null
-        return (
-          <div key={country} className="space-y-1">
-            <p className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">
-              {country === 'JP' ? '🇯🇵 In yen' : '🇮🇳 In rupees'}
-            </p>
-            {cats.map(([cat, amount]) => (
-              <div key={cat} className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-gray-700 dark:text-gray-200">
-                  {CATEGORY_ICONS[cat] || '📌'} {cat}
-                </span>
-                <span className="tabular-nums text-gray-900 dark:text-gray-100">
-                  {formatByCountry(amount, country)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )
-      })}
+      {/* Where it went, and when, and on what card. The bare category list
+          that used to sit here is inside this, with each one's share — an
+          amount alone says less than "over half of it". */}
+      <TripAnalysis trip={trip} expenses={expenses} totals={totals} />
 
       {candidates.length > 0 && (
         <div className="space-y-2 rounded-xl bg-indigo-500/10 p-3">
